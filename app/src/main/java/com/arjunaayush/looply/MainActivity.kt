@@ -25,6 +25,10 @@ import com.arjunaayush.looply.ui.screens.ReelsScreen
 import com.arjunaayush.looply.ui.screens.SavedVideosScreen
 import com.arjunaayush.looply.ui.screens.SettingsScreen
 import com.arjunaayush.looply.utils.Constants
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -41,8 +45,18 @@ class MainActivity : ComponentActivity() {
     private var reelsScreen: ReelsScreen? = null
     private var homePlayer: ExoPlayer? = null
 
-    private var downloadDialog: android.app.AlertDialog? = null
-    private var downloadStatusTextView: android.widget.TextView? = null
+    private val downloadReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            val total = repository.getAllVideos().size
+            Toast.makeText(this@MainActivity, "Reel saved to offline library! ($total total) ❤️", Toast.LENGTH_SHORT).show()
+            when (navigation.currentScreen) {
+                is Screen.Home -> showHomeScreen()
+                is Screen.Reels -> showReelsScreen(0)
+                is Screen.Saved -> showSavedVideosScreen()
+                else -> {}
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,6 +94,14 @@ class MainActivity : ComponentActivity() {
         instagramDownloader = InstagramDownloader(this, repository, videoImport, rootContainer)
 
         navigation.navigateTo(Screen.Home)
+
+        // Register download receiver for background worker completions
+        val filter = android.content.IntentFilter(com.arjunaayush.looply.features.download.DownloadReelWorker.ACTION_DOWNLOAD_COMPLETE)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(downloadReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(downloadReceiver, filter)
+        }
 
         // Handle video shared from another app (e.g. Gallery, WhatsApp, Photos)
         handleIncomingShareIntent(intent)
@@ -120,8 +142,7 @@ class MainActivity : ComponentActivity() {
 
         Toast.makeText(this, "Saving ${uris.size} reel(s) automatically...", Toast.LENGTH_SHORT).show()
 
-        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-        Thread {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             val importedList = mutableListOf<com.arjunaayush.looply.data.model.Video>()
             for (uri in uris) {
                 try {
@@ -133,17 +154,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            mainHandler.post {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 if (importedList.isNotEmpty()) {
                     val total = repository.getAllVideos().size
-                    Toast.makeText(this, "Saved ${importedList.size} new reel(s)! ($total total) ❤️", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Saved ${importedList.size} new reel(s)! ($total total) ❤️", Toast.LENGTH_SHORT).show()
                     // Instantly open and play the newly saved reel in the Reels feed!
                     showReelsScreen(0)
                 } else {
-                    Toast.makeText(this, "Could not save shared video", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Could not save shared video", Toast.LENGTH_SHORT).show()
                 }
             }
-        }.start()
+        }
     }
 
     private fun handleIncomingSharedText(url: String?, rawText: String?) {
@@ -164,110 +185,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startInstagramDownload(instagramUrl: String) {
-        showDownloadProgressDialog("Connecting to FastVideoSave... ⚡")
-
-        instagramDownloader.downloadReel(instagramUrl, object : InstagramDownloader.DownloadCallback {
-            override fun onProgress(message: String) {
-                updateDownloadProgressMessage(message)
-            }
-
-            override fun onSuccess(savedVideo: com.arjunaayush.looply.data.model.Video) {
-                dismissDownloadProgressDialog()
-                val total = repository.getAllVideos().size
-                Toast.makeText(this@MainActivity, "Reel downloaded & saved to Looply! ($total total) ❤️", Toast.LENGTH_SHORT).show()
-                showReelsScreen(0)
-            }
-
-            override fun onFailure(errorMessage: String) {
-                dismissDownloadProgressDialog()
-                android.app.AlertDialog.Builder(this@MainActivity)
-                    .setTitle("Could Not Download Reel")
-                    .setMessage(errorMessage)
-                    .setPositiveButton("Got It", null)
-                    .show()
-            }
-        })
-    }
-
-    private fun showDownloadProgressDialog(initialMessage: String) {
-        dismissDownloadProgressDialog()
-
-        val backgroundDrawable = android.graphics.drawable.GradientDrawable().apply {
-            setColor(Color.parseColor("#1E1E22"))
-            cornerRadius = 28f
-            setStroke(2, Color.parseColor("#333338"))
-        }
-
-        val layout = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            setPadding(60, 50, 60, 50)
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            background = backgroundDrawable
-        }
-
-        val progressBar = android.widget.ProgressBar(this).apply {
-            indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF2D55"))
-            layoutParams = android.widget.LinearLayout.LayoutParams(90, 90).apply {
-                marginEnd = 40
-            }
-        }
-
-        downloadStatusTextView = android.widget.TextView(this).apply {
-            text = initialMessage
-            setTextColor(Color.WHITE)
-            textSize = 15f
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                0,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        }
-
-        layout.addView(progressBar)
-        layout.addView(downloadStatusTextView)
-
-        downloadDialog = android.app.AlertDialog.Builder(this)
-            .setView(layout)
-            .setCancelable(false)
-            .create()
-            .apply {
-                window?.setBackgroundDrawableResource(android.R.color.transparent)
-                show()
-            }
-    }
-
-    private fun updateDownloadProgressMessage(message: String) {
-        runOnUiThread {
-            downloadStatusTextView?.text = message
-        }
-    }
-
-    private fun dismissDownloadProgressDialog() {
-        runOnUiThread {
-            try {
-                downloadDialog?.dismiss()
-                downloadDialog = null
-                downloadStatusTextView = null
-            } catch (_: Exception) {}
-        }
+        Toast.makeText(this, "Looply: Downloading reel in background... ⚡", Toast.LENGTH_SHORT).show()
+        com.arjunaayush.looply.features.download.DownloadReelWorker.enqueue(applicationContext, instagramUrl)
     }
 
     private fun downloadDirectVideo(videoUrl: String) {
-        showDownloadProgressDialog("Downloading video from link...")
-        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-        Thread {
-            val video = instagramDownloader.downloadAndSaveVideo(videoUrl)
-            mainHandler.post {
-                dismissDownloadProgressDialog()
-                if (video != null) {
-                    Toast.makeText(this, "Video downloaded & saved into Looply! ❤️", Toast.LENGTH_SHORT).show()
-                    showReelsScreen(0)
-                } else {
-                    Toast.makeText(this, "Could not download video from link", Toast.LENGTH_LONG).show()
-                }
-            }
-        }.start()
+        Toast.makeText(this, "Looply: Downloading video in background... ⚡", Toast.LENGTH_SHORT).show()
+        com.arjunaayush.looply.features.download.DownloadReelWorker.enqueue(applicationContext, videoUrl)
     }
 
     private fun renderScreen(screen: Screen) {
@@ -576,6 +500,9 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        try {
+            unregisterReceiver(downloadReceiver)
+        } catch (_: Exception) {}
         homePlayer?.release()
         homePlayer = null
         reelsScreen?.onDestroy()

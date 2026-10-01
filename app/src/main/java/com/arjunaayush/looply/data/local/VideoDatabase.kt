@@ -33,6 +33,11 @@ class VideoDatabase private constructor(context: Context) :
         }
     }
 
+    override fun onConfigure(db: SQLiteDatabase) {
+        super.onConfigure(db)
+        db.enableWriteAheadLogging()
+    }
+
     override fun onCreate(db: SQLiteDatabase) {
         val createTableSql = """
             CREATE TABLE $TABLE_VIDEOS (

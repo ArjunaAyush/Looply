@@ -41,4 +41,6 @@ dependencies {
 
     implementation("androidx.media3:media3-exoplayer:1.11.1")
     implementation("androidx.media3:media3-ui:1.11.1")
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }

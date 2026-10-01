@@ -1,11 +1,16 @@
 package com.arjunaayush.looply.data.repository
 
 import android.content.Context
+import android.util.Log
 import com.arjunaayush.looply.data.local.VideoDatabase
 import com.arjunaayush.looply.data.local.VideoEntity
 import com.arjunaayush.looply.data.model.Video
 import com.arjunaayush.looply.features.importvideo.ImportedVideoDetails
 import com.arjunaayush.looply.features.storage.VideoStorageManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class VideoRepository(
@@ -17,8 +22,26 @@ class VideoRepository(
     private val videoDao = database.videoDao()
 
     init {
-        // Sync any offline video files that were saved prior to database integration
-        syncDiskFilesWithDatabase()
+        // Run disk-to-database synchronization in background to prevent blocking Main/UI thread
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                syncDiskFilesWithDatabase()
+            } catch (e: Exception) {
+                Log.e("VideoRepository", "Error syncing disk with database: ${e.message}", e)
+            }
+        }
+    }
+
+    /**
+     * Checks if a video with the given shortcode is already downloaded.
+     */
+    fun isVideoAlreadyDownloaded(shortcode: String): Boolean {
+        val entities = videoDao.getAll()
+        return entities.any { it.title.contains(shortcode) || it.id.contains(shortcode) }
+    }
+
+    suspend fun isVideoAlreadyDownloadedAsync(shortcode: String): Boolean = withContext(Dispatchers.IO) {
+        isVideoAlreadyDownloaded(shortcode)
     }
 
     /**
@@ -29,11 +52,19 @@ class VideoRepository(
         return entities.map { it.toDomain() }
     }
 
+    suspend fun getAllVideosAsync(): List<Video> = withContext(Dispatchers.IO) {
+        getAllVideos()
+    }
+
     /**
      * Gets the newest/latest video, or null if empty.
      */
     fun getLatestVideo(): Video? {
         return getAllVideos().firstOrNull()
+    }
+
+    suspend fun getLatestVideoAsync(): Video? = withContext(Dispatchers.IO) {
+        getLatestVideo()
     }
 
     /**
@@ -55,12 +86,20 @@ class VideoRepository(
         return entity.toDomain()
     }
 
+    suspend fun saveVideoAsync(details: ImportedVideoDetails): Video = withContext(Dispatchers.IO) {
+        saveVideo(details)
+    }
+
     /**
      * Deletes a video from both database and local disk.
      */
     fun deleteVideo(video: Video): Boolean {
         videoDao.deleteById(video.id)
         return storageManager.deleteVideo(video.file)
+    }
+
+    suspend fun deleteVideoAsync(video: Video): Boolean = withContext(Dispatchers.IO) {
+        deleteVideo(video)
     }
 
     /**
@@ -74,6 +113,10 @@ class VideoRepository(
         }
     }
 
+    suspend fun deleteAllVideosAsync() = withContext(Dispatchers.IO) {
+        deleteAllVideos()
+    }
+
     /**
      * Ensures any physical reel files on disk are registered in the database.
      */
@@ -81,7 +124,6 @@ class VideoRepository(
         storageManager.migrateLegacyVideoIfNeeded()
         val diskFiles = storageManager.getAllVideos()
         val existingEntities = videoDao.getAll()
-        val existingPaths = existingEntities.map { it.filePath }.toSet()
 
         for (file in diskFiles) {
             val existing = existingEntities.find { it.filePath == file.absolutePath }
