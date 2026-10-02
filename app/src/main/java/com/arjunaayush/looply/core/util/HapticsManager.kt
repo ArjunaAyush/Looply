@@ -72,36 +72,40 @@ class HapticsManager(private val context: Context) {
                 }
             }
 
-            // Fallback for API 26-29
-            when (type) {
-                HapticEffectType.CONFIRM, HapticEffectType.LOOP_TOGGLE -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
-                    } else {
+            try {
+                // Fallback for API 26-29
+                when (type) {
+                    HapticEffectType.CONFIRM, HapticEffectType.LOOP_TOGGLE -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            vibrator.vibrate(30)
+                        }
+                    }
+                    HapticEffectType.TICK, HapticEffectType.SEEK_TICK -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            vibrator.vibrate(12)
+                        }
+                    }
+                    HapticEffectType.HEAVY_DELETE -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            vibrator.vibrate(70)
+                        }
+                    }
+                    HapticEffectType.FAVORITE_POP -> {
                         @Suppress("DEPRECATION")
-                        vibrator.vibrate(30)
+                        vibrator.vibrate(25)
                     }
                 }
-                HapticEffectType.TICK, HapticEffectType.SEEK_TICK -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
-                    } else {
-                        @Suppress("DEPRECATION")
-                        vibrator.vibrate(12)
-                    }
-                }
-                HapticEffectType.HEAVY_DELETE -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK))
-                    } else {
-                        @Suppress("DEPRECATION")
-                        vibrator.vibrate(70)
-                    }
-                }
-                HapticEffectType.FAVORITE_POP -> {
-                    @Suppress("DEPRECATION")
-                    vibrator.vibrate(25)
-                }
+            } catch (_: Exception) {
+                // Ignore any security/device vibration failures gracefully
             }
         } else {
             composeHaptic?.performHapticFeedback(
