@@ -61,6 +61,13 @@ class VideoStorageManager(private val context: Context) {
     }
 
     /**
+     * Calculates total bytes used by all saved videos.
+     */
+    fun getTotalStorageUsedBytes(): Long {
+        return getAllVideos().sumOf { it.length() }
+    }
+
+    /**
      * Returns the latest saved video, or null if no videos exist.
      */
     fun getLatestVideo(): File? {

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -187,8 +188,16 @@ fun SettingsScreen(
                     }
                 }
 
-                if (uiState.batchDownloadProgress.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(8.dp))
+                if (uiState.isDownloadingBatch || uiState.batchDownloadProgress.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (uiState.isDownloadingBatch) {
+                        LinearProgressIndicator(
+                            progress = { uiState.batchDownloadProgressFraction },
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
                     Text(
                         text = uiState.batchDownloadProgress,
                         style = MaterialTheme.typography.bodySmall,
@@ -305,6 +314,23 @@ fun SettingsScreen(
                         checked = uiState.autoDeleteWatchedAfter24h,
                         enabled = uiState.isInstagramLoggedIn,
                         onCheckedChange = { viewModel.setAutoDeleteWatchedAfter24h(it) }
+                    )
+                }
+
+                if (uiState.isAutoDownloading || uiState.autoDownloadProgress.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    if (uiState.isAutoDownloading) {
+                        LinearProgressIndicator(
+                            progress = { uiState.autoDownloadProgressFraction },
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+                    Text(
+                        text = uiState.autoDownloadProgress,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
