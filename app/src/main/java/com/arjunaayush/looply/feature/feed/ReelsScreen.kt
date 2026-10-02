@@ -39,12 +39,22 @@ fun ReelsScreen(
         )
     } else {
         val pagerState = rememberPagerState(
-            initialPage = uiState.selectedIndex,
+            initialPage = uiState.selectedIndex.coerceIn(0, (uiState.videos.size - 1).coerceAtLeast(0)),
             pageCount = { uiState.videos.size }
         )
 
+        LaunchedEffect(uiState.selectedIndex) {
+            if (uiState.selectedIndex in 0 until uiState.videos.size &&
+                pagerState.currentPage != uiState.selectedIndex
+            ) {
+                pagerState.scrollToPage(uiState.selectedIndex)
+            }
+        }
+
         LaunchedEffect(pagerState.currentPage) {
-            viewModel.setPage(pagerState.currentPage)
+            if (uiState.selectedIndex != pagerState.currentPage) {
+                viewModel.setPage(pagerState.currentPage)
+            }
         }
 
         Box(

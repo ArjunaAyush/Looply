@@ -65,8 +65,7 @@ class DownloadBatchWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val targetMb = inputData.getInt(KEY_TARGET_MB, 100)
-        // Average reel is ~7 MB
-        val targetCount = (targetMb / 7).coerceIn(4, 30)
+        val targetCount = (targetMb / 7).coerceAtLeast(1)
 
         createNotificationChannel()
 
@@ -77,48 +76,45 @@ class DownloadBatchWorker @AssistedInject constructor(
             Log.w(TAG, "Could not set foreground service: ${e.message}")
         }
 
-        // 1. Capture stage
-        val capture = engine.capture(targetCount) { queued ->
-            val progressNotif = buildProgressNotification(queued, targetCount, "Capturing reels from feed ($queued/$targetCount)...")
-            notificationManager.notify(NOTIFICATION_ID, progressNotif)
-            val fraction = (queued.toFloat() / targetCount * 0.5f).coerceIn(0f, 0.5f)
-            setProgressAsync(workDataOf(
-                KEY_REELS_SAVED_COUNT to queued,
-                KEY_PROGRESS_PERCENT to (fraction * 100).toInt(),
-                KEY_PROGRESS_FRACTION to fraction,
-                KEY_STATUS_MESSAGE to "Capturing reels ($queued/$targetCount)..."
-            ))
-        }
+        val result = engine.ingestBatch(
+            targetMb = targetMb,
+            isCancelled = { isStopped },
+            onProgress = { done, target, mb, status ->
+                val notif = buildProgressNotification(done, target, "$status ($mb MB / $targetMb MB)")
+                notificationManager.notify(NOTIFICATION_ID, notif)
+                val fraction = (mb.toFloat() / targetMb.toFloat()).coerceIn(0f, 1f)
+                setProgressAsync(workDataOf(
+                    KEY_REELS_SAVED_COUNT to done,
+                    KEY_DOWNLOADED_MB to mb,
+                    KEY_PROGRESS_PERCENT to (fraction * 100).toInt(),
+                    KEY_PROGRESS_FRACTION to fraction,
+                    KEY_STATUS_MESSAGE to status
+                ))
+            }
+        )
 
-        val statusMsg = when (capture) {
-            is CaptureResult.Queued -> "Captured ${capture.newItems} reels from feed"
-            is CaptureResult.Blocked -> "Feed capture paused to protect account"
-            is CaptureResult.NotLoggedIn -> "Instagram session expired"
-            is CaptureResult.NeedsVerification -> "Instagram checkpoint required"
-            is CaptureResult.RateLimited -> "Instagram rate limited, backing off"
-            is CaptureResult.NoTemplate -> "Feed loaded, no more reels found"
-            is CaptureResult.SchemaDrift -> "Feed layout changed"
-            is CaptureResult.Failed -> "Capture failed: ${capture.code}"
+        val downloadedCount = when (result) {
+            is BatchIngestionResult.Success -> result.downloadedCount
+            is BatchIngestionResult.Stopped -> result.downloadedCount
+            is BatchIngestionResult.Failed -> 0
         }
-
-        // 2. Download stage
-        val downloaded = engine.downloadQueued(targetCount) { done ->
-            val notif = buildProgressNotification(done, targetCount, "Downloading video files ($done/$targetCount)...")
-            notificationManager.notify(NOTIFICATION_ID, notif)
-            val fraction = (0.5f + (done.toFloat() / targetCount * 0.5f)).coerceIn(0.5f, 1f)
-            setProgressAsync(workDataOf(
-                KEY_REELS_SAVED_COUNT to done,
-                KEY_PROGRESS_PERCENT to (fraction * 100).toInt(),
-                KEY_PROGRESS_FRACTION to fraction,
-                KEY_STATUS_MESSAGE to "Downloading reels ($done/$targetCount)..."
-            ))
+        val downloadedBytes = when (result) {
+            is BatchIngestionResult.Success -> result.downloadedBytes
+            is BatchIngestionResult.Stopped -> result.downloadedBytes
+            is BatchIngestionResult.Failed -> 0L
+        }
+        val downloadedMb = (downloadedBytes / (1024 * 1024)).toInt()
+        val statusMsg = when (result) {
+            is BatchIngestionResult.Success -> result.message
+            is BatchIngestionResult.Stopped -> result.reason
+            is BatchIngestionResult.Failed -> "Download failed: ${result.error}"
         }
 
         // Final notification
         val finalNotif = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle("Batch Download Complete")
-            .setContentText("Successfully saved $downloaded reels")
+            .setContentText("Successfully saved $downloadedCount reels ($downloadedMb MB)")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .build()
@@ -126,20 +122,16 @@ class DownloadBatchWorker @AssistedInject constructor(
 
         context.sendBroadcast(Intent(ACTION_BATCH_DOWNLOAD_COMPLETE).setPackage(context.packageName))
 
-        val downloadedMb = if (downloaded > 0) (downloaded * 7).coerceAtLeast(1) else 0
-
         val output = workDataOf(
-            KEY_REELS_SAVED_COUNT to downloaded,
+            KEY_REELS_SAVED_COUNT to downloadedCount,
             KEY_DOWNLOADED_MB to downloadedMb,
             KEY_STATUS_MESSAGE to statusMsg
         )
 
-        when (capture) {
-            is CaptureResult.Queued -> Result.success(output)
-            is CaptureResult.RateLimited, is CaptureResult.Blocked,
-            is CaptureResult.NeedsVerification, is CaptureResult.NotLoggedIn -> Result.failure(output)
-            is CaptureResult.Failed -> if (runAttemptCount < 2) Result.retry() else Result.failure(output)
-            else -> if (downloaded > 0) Result.success(output) else Result.failure(output)
+        when (result) {
+            is BatchIngestionResult.Success -> Result.success(output)
+            is BatchIngestionResult.Stopped -> Result.success(output)
+            is BatchIngestionResult.Failed -> Result.failure(output)
         }
     }
 

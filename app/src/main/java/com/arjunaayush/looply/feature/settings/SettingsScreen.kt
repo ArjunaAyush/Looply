@@ -2,24 +2,35 @@ package com.arjunaayush.looply.feature.settings
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,9 +38,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.arjunaayush.looply.BuildConfig
 import com.arjunaayush.looply.core.designsystem.LinkerlyButton
@@ -484,14 +499,96 @@ fun SettingsScreen(
 
         // 6. Debug Tools (Debug builds only)
         if (BuildConfig.DEBUG && uiState.feedIngestionEnabled) {
+            val debugLogs by viewModel.debugLogs.collectAsState()
+            val listState = rememberLazyListState()
+
+            LaunchedEffect(debugLogs.size) {
+                if (debugLogs.isNotEmpty()) {
+                    listState.animateScrollToItem(debugLogs.size - 1)
+                }
+            }
+
             LinkerlyCategorizedCard(title = "Debug Tools") {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Export latest intercepted feed payload for diagnosis and fixture generation.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Live Ingestion Console",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (debugLogs.isNotEmpty()) {
+                            TextButton(
+                                onClick = { viewModel.clearDebugLogs() },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "Clear",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(8.dp))
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 120.dp, max = 220.dp),
+                        color = Color(0xFF0C0C10),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFF22222C))
+                    ) {
+                        if (debugLogs.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No background activity logged yet.\nTap 'Download Reels Now' to watch live parallel ingestion.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                state = listState,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                items(debugLogs) { logLine ->
+                                    val lineColor = when {
+                                        "Saved" in logLine || "complete" in logLine -> Color(0xFF81C784)
+                                        "Found fresh" in logLine || "Redirected" in logLine -> Color(0xFFFF80AB)
+                                        "Downloading" in logLine || "Worker" in logLine -> Color(0xFFB0BEC5)
+                                        "error" in logLine || "Failed" in logLine || "Aborting" in logLine -> Color(0xFFE57373)
+                                        "duplicate" in logLine || "Skipping" in logLine -> Color(0xFFFFD54F)
+                                        else -> Color(0xFFE0E0E0)
+                                    }
+                                    Text(
+                                        text = logLine,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                        fontFamily = FontFamily.Monospace,
+                                        color = lineColor
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
                     LinkerlyOutlinedButton(
                         onClick = {
                             val file = viewModel.getLatestDebugCaptureFile()
@@ -513,7 +610,7 @@ fun SettingsScreen(
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Export Last Capture")
+                        Text("Export Last Capture Dump")
                     }
                 }
             }

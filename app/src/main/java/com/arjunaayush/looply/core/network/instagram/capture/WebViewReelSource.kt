@@ -15,6 +15,7 @@ import com.arjunaayush.looply.core.network.instagram.ReelCandidate
 import com.arjunaayush.looply.core.network.instagram.ReelJsonNormalizer
 import com.arjunaayush.looply.core.network.instagram.config.IngestionConfig
 import com.arjunaayush.looply.core.preferences.PreferencesManager
+import com.arjunaayush.looply.core.util.IngestionLogger
 import com.arjunaayush.looply.features.instagram.InstagramDownloader
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -33,6 +34,8 @@ class WebViewReelSource @Inject constructor(
     @ApplicationContext private val context: Context,
     private val preferencesManager: PreferencesManager,
 ) {
+    var workerId: Int = 1
+
     private val events = Channel<BridgeEvent>(Channel.UNLIMITED)
     private val backlog = ArrayDeque<BridgeEvent>()
     private var webView: WebView? = null
@@ -41,6 +44,7 @@ class WebViewReelSource @Inject constructor(
 
     @SuppressLint("SetJavaScriptEnabled")
     suspend fun open(config: IngestionConfig) = withContext(Dispatchers.Main) {
+        IngestionLogger.log("Worker-$workerId", "Opening background browser...")
         val script = context.assets.open(SCRIPT_ASSET).bufferedReader().use { it.readText() }
             .replace("/*__CONFIG__*/{}", config.toJsJson())
         val origins = setOf(INSTAGRAM_ORIGIN)
@@ -113,6 +117,7 @@ class WebViewReelSource @Inject constructor(
                     failIfLoggedOut(url)
                     val shortcode = REEL_URL_REGEX.find(url)?.groupValues?.get(1)
                     if (!shortcode.isNullOrBlank()) {
+                        IngestionLogger.log("Worker-$workerId", "Redirected to /reels/$shortcode")
                         events.trySend(BridgeEvent.ReelRedirect(shortcode = shortcode, url = url))
                     }
                 }
@@ -122,6 +127,7 @@ class WebViewReelSource @Inject constructor(
                     failIfLoggedOut(url)
                     val shortcode = REEL_URL_REGEX.find(url)?.groupValues?.get(1)
                     if (!shortcode.isNullOrBlank()) {
+                        IngestionLogger.log("Worker-$workerId", "Page loaded reel: $shortcode")
                         events.trySend(BridgeEvent.ReelRedirect(shortcode = shortcode, url = url))
                     }
                     events.trySend(BridgeEvent.Navigated(url))
@@ -135,6 +141,7 @@ class WebViewReelSource @Inject constructor(
 
     /** Triggers navigation to the Instagram reels feed to obtain the next recommended reel. */
     suspend fun loadReelsFeed() = withContext(Dispatchers.Main) {
+        IngestionLogger.log("Worker-$workerId", "Navigating to https://www.instagram.com/reels/...")
         webView?.evaluateJavascript(
             "window.__looply && window.__looply.loadFeed ? window.__looply.loadFeed() : (window.location.href = 'https://www.instagram.com/reels/')",
             null
@@ -150,14 +157,16 @@ class WebViewReelSource @Inject constructor(
 
         while (System.currentTimeMillis() < deadline) {
             val remainingMs = (deadline - System.currentTimeMillis()).coerceAtLeast(100)
-            val waitMs = if (redirectCandidate != null) 3000L.coerceAtMost(remainingMs) else remainingMs
+            val waitMs = if (redirectCandidate != null) 2500L.coerceAtMost(remainingMs) else remainingMs
             val event = withTimeoutOrNull(waitMs) {
                 events.receiveCatching().getOrNull()
             }
 
             if (event == null) {
                 if (redirectCandidate != null) {
-                    return candidatesFromPayloads.find { it.shortcode == detectedShortcode } ?: redirectCandidate
+                    val matching = candidatesFromPayloads.find { it.shortcode == detectedShortcode } ?: redirectCandidate
+                    IngestionLogger.log("Worker-$workerId", "Discovered reel $detectedShortcode (resolving via shortcode)")
+                    return matching
                 }
                 if (System.currentTimeMillis() >= deadline) break
                 continue
@@ -172,11 +181,13 @@ class WebViewReelSource @Inject constructor(
                     if (detectedShortcode != null) {
                         val matching = page.items.find { it.shortcode == detectedShortcode }
                         if (matching != null && !matching.progressiveUrl.isNullOrBlank()) {
+                            IngestionLogger.log("Worker-$workerId", "Captured stream from payload for $detectedShortcode")
                             return matching
                         }
                     } else {
                         val firstValid = page.items.find { !it.progressiveUrl.isNullOrBlank() }
                         if (firstValid != null) {
+                            IngestionLogger.log("Worker-$workerId", "Captured stream from feed payload")
                             return firstValid
                         }
                     }
@@ -187,10 +198,12 @@ class WebViewReelSource @Inject constructor(
 
                     val existing = candidatesFromPayloads.find { it.shortcode == event.shortcode }
                     if (existing != null && !existing.progressiveUrl.isNullOrBlank()) {
+                        IngestionLogger.log("Worker-$workerId", "Matched payload stream for ${event.shortcode}")
                         return existing
                     }
 
                     if (!event.videoUrl.isNullOrBlank()) {
+                        IngestionLogger.log("Worker-$workerId", "Captured DOM video stream for ${event.shortcode}")
                         val mediaId = InstagramDownloader.shortcodeToMediaId(event.shortcode)
                         return ReelCandidate(
                             mediaId = mediaId,
@@ -275,6 +288,7 @@ class WebViewReelSource @Inject constructor(
         backlog.filterIsInstance<BridgeEvent.Payload>().also { backlog.clear() }
 
     suspend fun close() = withContext(NonCancellable + Dispatchers.Main) {
+        IngestionLogger.log("Worker-$workerId", "Closing background browser")
         webView?.apply {
             stopLoading()
             destroy()

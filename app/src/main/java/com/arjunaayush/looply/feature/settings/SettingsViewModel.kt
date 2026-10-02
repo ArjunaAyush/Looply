@@ -8,6 +8,7 @@ import androidx.work.WorkManager
 import com.arjunaayush.looply.BuildConfig
 import com.arjunaayush.looply.core.network.instagram.config.IngestionConfigRepository
 import com.arjunaayush.looply.core.preferences.PreferencesManager
+import com.arjunaayush.looply.core.util.IngestionLogger
 import com.arjunaayush.looply.features.download.AutoDownloadScheduler
 import com.arjunaayush.looply.features.download.AutoDownloadWorker
 import com.arjunaayush.looply.features.download.BlockReason
@@ -260,5 +261,11 @@ class SettingsViewModel @Inject constructor(
         isAutoDownloading.value = false
         autoDownloadProgress.value = ""
         autoDownloadProgressFraction.value = 0f
+    }
+
+    val debugLogs: StateFlow<List<String>> = IngestionLogger.logs
+
+    fun clearDebugLogs() {
+        IngestionLogger.clear()
     }
 }

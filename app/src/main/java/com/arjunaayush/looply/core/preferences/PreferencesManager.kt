@@ -89,6 +89,18 @@ class PreferencesManager @Inject constructor(
         _cacheLimitIndex.value = clamped
     }
 
+    fun getCacheLimitBytes(): Long {
+        return when (_cacheLimitIndex.value) {
+            0 -> 300L * 1024 * 1024
+            1 -> 500L * 1024 * 1024
+            2 -> 1024L * 1024 * 1024
+            3 -> 2L * 1024 * 1024 * 1024
+            4 -> 3L * 1024 * 1024 * 1024
+            5 -> 5L * 1024 * 1024 * 1024
+            else -> 500L * 1024 * 1024
+        }
+    }
+
     fun setAutoDeleteWatchedAfter24h(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_AUTO_DELETE_24H, enabled).apply()
         _autoDeleteWatchedAfter24h.value = enabled

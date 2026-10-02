@@ -82,18 +82,18 @@
   const origPushState = history.pushState.bind(history);
   history.pushState = function () {
     origPushState.apply(this, arguments);
-    setTimeout(checkCurrentReel, 100);
-    setTimeout(checkCurrentReel, 500);
+    checkCurrentReel();
+    setTimeout(checkCurrentReel, 150);
   };
   const origReplaceState = history.replaceState.bind(history);
   history.replaceState = function () {
     origReplaceState.apply(this, arguments);
-    setTimeout(checkCurrentReel, 100);
-    setTimeout(checkCurrentReel, 500);
+    checkCurrentReel();
+    setTimeout(checkCurrentReel, 150);
   };
   window.addEventListener('popstate', () => {
-    setTimeout(checkCurrentReel, 100);
-    setTimeout(checkCurrentReel, 500);
+    checkCurrentReel();
+    setTimeout(checkCurrentReel, 150);
   });
 
   // ---- DOM Mutation Observer for video element ----
