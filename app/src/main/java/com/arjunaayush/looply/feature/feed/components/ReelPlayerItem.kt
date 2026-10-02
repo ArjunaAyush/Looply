@@ -56,6 +56,7 @@ fun ReelPlayerItem(
     isMuted: Boolean,
     onToggleFavorite: () -> Unit,
     onDelete: () -> Unit,
+    onToggleMute: () -> Unit = {},
     modifier: Modifier = Modifier,
     isTabActive: Boolean = true
 ) {
@@ -167,7 +168,8 @@ fun ReelPlayerItem(
             isLooping = isLooping,
             isMuted = isMuted,
             onToggleFavorite = onToggleFavorite,
-            onDelete = onDelete
+            onDelete = onDelete,
+            onToggleMute = onToggleMute
         )
 
         // Heart burst micro-interaction on double-tap

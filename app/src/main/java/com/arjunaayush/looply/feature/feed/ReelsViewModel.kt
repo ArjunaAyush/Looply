@@ -1,5 +1,7 @@
 package com.arjunaayush.looply.feature.feed
 
+import android.content.Context
+import android.media.AudioManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.arjunaayush.looply.domain.model.Video
@@ -7,6 +9,7 @@ import com.arjunaayush.looply.domain.usecase.DeleteVideoUseCase
 import com.arjunaayush.looply.domain.usecase.GetSavedVideosUseCase
 import com.arjunaayush.looply.domain.usecase.ToggleFavoriteUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,14 +27,25 @@ data class FeedUiState(
 
 @HiltViewModel
 class ReelsViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val getSavedVideosUseCase: GetSavedVideosUseCase,
     private val deleteVideoUseCase: DeleteVideoUseCase,
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase
 ) : ViewModel() {
 
     private val isLooping = MutableStateFlow(true)
-    private val isMuted = MutableStateFlow(false)
+    private val isMuted = MutableStateFlow(isDeviceMutedByDefault(context))
     private val selectedIndex = MutableStateFlow(0)
+
+    companion object {
+        fun isDeviceMutedByDefault(context: Context): Boolean {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
+            val isRingerSilentOrVibrate = audioManager.ringerMode == AudioManager.RINGER_MODE_SILENT ||
+                    audioManager.ringerMode == AudioManager.RINGER_MODE_VIBRATE
+            val isMusicStreamSilent = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
+            return isRingerSilentOrVibrate || isMusicStreamSilent
+        }
+    }
 
     val uiState: StateFlow<FeedUiState> = combine(
         getSavedVideosUseCase(),

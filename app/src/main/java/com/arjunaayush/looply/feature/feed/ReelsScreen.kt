@@ -65,6 +65,7 @@ fun ReelsScreen(
                     isMuted = uiState.isMuted,
                     onToggleFavorite = { viewModel.toggleFavorite(video.id) },
                     onDelete = { viewModel.deleteVideo(video.id) },
+                    onToggleMute = { viewModel.toggleMute() },
                     isTabActive = isTabActive
                 )
             }

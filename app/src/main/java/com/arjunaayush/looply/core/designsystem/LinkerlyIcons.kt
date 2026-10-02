@@ -104,6 +104,12 @@ object LinkerlyIcons {
         val Download: ImageVector
             @Composable
             get() = ImageVector.vectorResource(id = R.drawable.ic_download_outlined)
+        val VolumeUp: ImageVector
+            @Composable
+            get() = ImageVector.vectorResource(id = R.drawable.ic_volume_up_outlined)
+        val VolumeOff: ImageVector
+            @Composable
+            get() = ImageVector.vectorResource(id = R.drawable.ic_volume_off_outlined)
         val Share: ImageVector
             @Composable
             get() = ImageVector.vectorResource(id = R.drawable.ic_share_outlined)

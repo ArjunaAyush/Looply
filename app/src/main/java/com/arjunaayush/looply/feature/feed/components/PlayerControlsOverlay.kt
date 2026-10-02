@@ -41,6 +41,7 @@ fun PlayerControlsOverlay(
     isMuted: Boolean,
     onToggleFavorite: () -> Unit,
     onDelete: () -> Unit,
+    onToggleMute: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -60,30 +61,6 @@ fun PlayerControlsOverlay(
             )
             .padding(16.dp)
     ) {
-        // Top Badges
-        if (isMuted) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(top = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .background(Color.Black.copy(alpha = 0.6f), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    LinkerlyIcon(
-                        imageVector = LinkerlyIcons.FolderOverlays.Music,
-                        contentDescription = null,
-                        size = 16.dp,
-                        tint = Color.White
-                    )
-                }
-            }
-        }
-
         // Right Action Rail
         Column(
             modifier = Modifier
@@ -103,6 +80,23 @@ fun PlayerControlsOverlay(
                     contentDescription = null,
                     tint = if (video.isFavorite) LooplyPink else Color.White,
                     size = 24.dp
+                )
+            }
+
+            LinkerlyIconButton(
+                onClick = {
+                    haptics.playHaptic(HapticEffectType.TICK)
+                    onToggleMute()
+                },
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+            ) {
+                LinkerlyIcon(
+                    imageVector = if (isMuted) LinkerlyIcons.Buttons.VolumeOff else LinkerlyIcons.Buttons.VolumeUp,
+                    contentDescription = if (isMuted) "Unmute" else "Mute",
+                    tint = if (isMuted) Color.White.copy(alpha = 0.7f) else LooplyPink,
+                    size = 22.dp
                 )
             }
 
