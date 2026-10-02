@@ -17,6 +17,7 @@ import com.arjunaayush.looply.core.network.InstagramFeedClient
 import com.arjunaayush.looply.core.preferences.PreferencesManager
 import com.arjunaayush.looply.domain.model.Video
 import com.arjunaayush.looply.data.repository.VideoRepository
+import com.arjunaayush.looply.core.network.instagram.ReelJsonNormalizer
 import com.arjunaayush.looply.features.importvideo.VideoImport
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -249,17 +250,10 @@ class InstagramDownloader(
                 Log.d(TAG, "Media info API ($endpoint) HTTP $code")
                 if (code in 200..299) {
                     val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
-                    val root = JSONObject(jsonStr)
-                    val items = root.optJSONArray("items")
-                    if (items != null && items.length() > 0) {
-                        val item = items.getJSONObject(0)
-                        val videoVersions = item.optJSONArray("video_versions")
-                        if (videoVersions != null && videoVersions.length() > 0) {
-                            val stream = videoVersions.getJSONObject(0).optString("url")
-                            if (stream.isNotBlank()) {
-                                return cleanCdnVideoUrl(stream)
-                            }
-                        }
+                    val candidate = ReelJsonNormalizer.parse(jsonStr).items.firstOrNull()
+                    val stream = candidate?.progressiveUrl
+                    if (!stream.isNullOrBlank()) {
+                        return cleanCdnVideoUrl(stream)
                     }
                 }
             } catch (e: Exception) {
@@ -299,17 +293,10 @@ class InstagramDownloader(
                 Log.d(TAG, "Direct /?__a=1 endpoint ($endpoint) HTTP $code")
                 if (code in 200..299) {
                     val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
-                    val root = JSONObject(jsonStr)
-                    val items = root.optJSONArray("items")
-                    if (items != null && items.length() > 0) {
-                        val item = items.getJSONObject(0)
-                        val videoVersions = item.optJSONArray("video_versions")
-                        if (videoVersions != null && videoVersions.length() > 0) {
-                            val stream = videoVersions.getJSONObject(0).optString("url")
-                            if (stream.isNotBlank()) {
-                                return cleanCdnVideoUrl(stream)
-                            }
-                        }
+                    val candidate = ReelJsonNormalizer.parse(jsonStr).items.firstOrNull()
+                    val stream = candidate?.progressiveUrl
+                    if (!stream.isNullOrBlank()) {
+                        return cleanCdnVideoUrl(stream)
                     }
                 }
             } catch (e: Exception) {
