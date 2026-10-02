@@ -56,7 +56,6 @@ fun ReelPlayerItem(
 ) {
     val context = LocalContext.current
     val haptics = remember { HapticsManager(context) }
-    var showControls by remember { mutableStateOf(true) }
     var showHeartAnimation by remember { mutableStateOf(false) }
 
     val exoPlayer = remember {
@@ -86,13 +85,6 @@ fun ReelPlayerItem(
         exoPlayer.volume = if (isMuted) 0f else 1f
     }
 
-    LaunchedEffect(showControls) {
-        if (showControls) {
-            delay(2800)
-            showControls = false
-        }
-    }
-
     DisposableEffect(Unit) {
         onDispose {
             exoPlayer.release()
@@ -110,7 +102,6 @@ fun ReelPlayerItem(
                         onToggleFavorite()
                     },
                     onTap = {
-                        showControls = !showControls
                         if (exoPlayer.isPlaying) {
                             exoPlayer.pause()
                         } else {
@@ -125,7 +116,7 @@ fun ReelPlayerItem(
                 PlayerView(ctx).apply {
                     player = exoPlayer
                     useController = false
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     layoutParams = FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
@@ -135,21 +126,14 @@ fun ReelPlayerItem(
             modifier = Modifier.fillMaxSize()
         )
 
-        // Auto-hiding HUD controls
-        AnimatedVisibility(
-            visible = showControls,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            PlayerControlsOverlay(
-                video = video,
-                isLooping = isLooping,
-                isMuted = isMuted,
-                onToggleFavorite = onToggleFavorite,
-                onDelete = onDelete
-            )
-        }
+        // Persistent HUD controls (do not auto-hide)
+        PlayerControlsOverlay(
+            video = video,
+            isLooping = isLooping,
+            isMuted = isMuted,
+            onToggleFavorite = onToggleFavorite,
+            onDelete = onDelete
+        )
 
         // Heart burst micro-interaction on double-tap
         if (showHeartAnimation) {

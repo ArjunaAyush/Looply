@@ -39,11 +39,12 @@ class ReelsViewModel @Inject constructor(
         isMuted,
         selectedIndex
     ) { videos, looping, muted, index ->
+        val feedVideos = videos.reversed() // Oldest first, latest goes to the bottom of the feed
         FeedUiState(
-            videos = videos,
+            videos = feedVideos,
             isLooping = looping,
             isMuted = muted,
-            selectedIndex = index.coerceIn(0, (videos.size - 1).coerceAtLeast(0))
+            selectedIndex = index.coerceIn(0, (feedVideos.size - 1).coerceAtLeast(0))
         )
     }.stateIn(
         scope = viewModelScope,

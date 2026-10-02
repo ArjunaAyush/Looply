@@ -76,6 +76,10 @@ class SettingsViewModel @Inject constructor(
                             batchDownloadProgress.value = if (savedCount > 0) "Finished: Saved $savedCount loops ($downloadedMb MB)" else "Finished"
                             batchDownloadProgressFraction.value = 1f
                             isDownloadingBatch.value = false
+                        } else if (info.state == WorkInfo.State.CANCELLED) {
+                            batchDownloadProgress.value = "Downloads stopped"
+                            batchDownloadProgressFraction.value = 0f
+                            isDownloadingBatch.value = false
                         } else if (info.state == WorkInfo.State.FAILED) {
                             batchDownloadProgress.value = "Batch download finished or no new reels found"
                             batchDownloadProgressFraction.value = 0f
@@ -200,5 +204,16 @@ class SettingsViewModel @Inject constructor(
         batchDownloadProgress.value = "Enqueuing batch download for $sizeMb MB..."
         batchDownloadProgressFraction.value = 0f
         DownloadBatchWorker.enqueue(context, sizeMb)
+    }
+
+    fun stopDownloading() {
+        workManager.cancelUniqueWork(DownloadBatchWorker.UNIQUE_WORK_NAME)
+        workManager.cancelAllWorkByTag(AutoDownloadWorker.TAG)
+        isDownloadingBatch.value = false
+        batchDownloadProgress.value = "Downloads stopped."
+        batchDownloadProgressFraction.value = 0f
+        isAutoDownloading.value = false
+        autoDownloadProgress.value = ""
+        autoDownloadProgressFraction.value = 0f
     }
 }

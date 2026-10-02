@@ -31,6 +31,9 @@ import com.arjunaayush.looply.core.designsystem.theme.LooplyPink
 import com.arjunaayush.looply.core.util.HapticEffectType
 import com.arjunaayush.looply.core.util.HapticsManager
 import com.arjunaayush.looply.domain.model.Video
+import android.widget.Toast
+import com.arjunaayush.looply.core.util.MediaExportUtils
+import java.io.File
 
 @Composable
 fun PlayerControlsOverlay(
@@ -106,6 +109,32 @@ fun PlayerControlsOverlay(
                     contentDescription = null,
                     tint = if (video.isFavorite) LooplyPink else Color.White,
                     size = 24.dp
+                )
+            }
+
+            LinkerlyIconButton(
+                onClick = {
+                    haptics.playHaptic(HapticEffectType.CONFIRM)
+                    val success = MediaExportUtils.exportVideoToDevice(
+                        context = context,
+                        sourceFile = File(video.filePath),
+                        title = video.title.ifBlank { "Reel_${video.id}" }
+                    )
+                    if (success) {
+                        Toast.makeText(context, "Saved reel to Movies/Looply", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Could not save reel to device", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+            ) {
+                LinkerlyIcon(
+                    imageVector = LinkerlyIcons.Buttons.Download,
+                    contentDescription = "Save to device",
+                    tint = Color.White,
+                    size = 22.dp
                 )
             }
 

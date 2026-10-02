@@ -13,6 +13,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
+import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.arjunaayush.looply.MainActivity
@@ -379,6 +380,8 @@ class AutoDownloadWorker(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val cancelPendingIntent = WorkManager.getInstance(context).createCancelPendingIntent(id)
+
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle("Looply • Auto-Downloading on WiFi ($currentMb MB / $targetMb MB)")
@@ -386,6 +389,7 @@ class AutoDownloadWorker(
             .setProgress(100, percent, percent == 0)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", cancelPendingIntent)
             .setAutoCancel(false)
             .build()
     }

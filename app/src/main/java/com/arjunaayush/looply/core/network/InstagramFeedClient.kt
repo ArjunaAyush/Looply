@@ -141,7 +141,7 @@ class InstagramFeedClient @Inject constructor(
         resultReels.addAll(clipsReels)
         Log.d(TAG, "Fetched ${clipsReels.size} reels from clips/home")
 
-        // 2. Secondary: If more reels needed, query Explore Clips
+        // 2. Secondary: If more reels needed, query Explore Clips algorithm
         if (resultReels.size < minCount) {
             val exploreReels = fetchFromClipsExplore(cookies, csrf, targetCount = minCount - resultReels.size)
             for (r in exploreReels) {
@@ -149,21 +149,10 @@ class InstagramFeedClient @Inject constructor(
                     resultReels.add(r)
                 }
             }
-            Log.d(TAG, "Total reels after explore fallback: ${resultReels.size}")
+            Log.d(TAG, "Total reels after explore algorithm fallback: ${resultReels.size}")
         }
 
-        // 3. Tertiary: User Saved Posts / Clips
-        if (resultReels.size < minCount) {
-            val savedReels = fetchFromSaved(cookies, csrf)
-            for (r in savedReels) {
-                if (resultReels.none { it.shortcode == r.shortcode }) {
-                    resultReels.add(r)
-                }
-            }
-            Log.d(TAG, "Total reels after saved fallback: ${resultReels.size}")
-        }
-
-        // 4. Quaternary: Timeline Feed
+        // 3. Tertiary: Timeline Feed (Reels in user follow stream)
         if (resultReels.size < minCount) {
             val timelineReels = fetchFromTimeline(cookies, csrf)
             for (r in timelineReels) {
@@ -303,44 +292,7 @@ class InstagramFeedClient @Inject constructor(
         return collectedReels
     }
 
-    private fun fetchFromSaved(cookies: String, csrf: String): List<FeedReel> {
-        val list = mutableListOf<FeedReel>()
-        val endpoints = listOf(
-            "https://www.instagram.com/api/v1/feed/saved/posts/",
-            "https://i.instagram.com/api/v1/feed/saved/posts/"
-        )
 
-        for (endpoint in endpoints) {
-            var conn: HttpURLConnection? = null
-            try {
-                val url = URL(endpoint)
-                conn = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    connectTimeout = 15000
-                    readTimeout = 15000
-                    setRequestProperty("User-Agent", USER_AGENT)
-                    setRequestProperty("Cookie", cookies)
-                    setRequestProperty("X-IG-App-ID", IG_APP_ID)
-                    setRequestProperty("X-ASBD-ID", "359341")
-                    setRequestProperty("X-IG-WWW-Claim", "0")
-                    if (csrf.isNotBlank()) setRequestProperty("X-CSRFToken", csrf)
-                    setRequestProperty("X-Requested-With", "XMLHttpRequest")
-                    setRequestProperty("Referer", "https://www.instagram.com/")
-                }
-
-                if (conn.responseCode in 200..299) {
-                    val response = readStream(conn)
-                    val reels = parseClipsHomeResponse(response).reels
-                    if (reels.isNotEmpty()) return reels
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed saved posts query on $endpoint: ${e.message}")
-            } finally {
-                conn?.disconnect()
-            }
-        }
-        return list
-    }
 
     private fun fetchFromTimeline(cookies: String, csrf: String): List<FeedReel> {
         val endpoints = listOf(

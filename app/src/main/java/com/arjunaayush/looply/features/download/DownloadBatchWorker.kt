@@ -366,6 +366,8 @@ class DownloadBatchWorker(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val cancelPendingIntent = WorkManager.getInstance(context).createCancelPendingIntent(id)
+
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle("Looply • Downloading Loops ($currentMb MB / $targetMb MB)")
@@ -373,6 +375,7 @@ class DownloadBatchWorker(
             .setProgress(100, percent, percent == 0)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", cancelPendingIntent)
             .setAutoCancel(false)
             .build()
     }

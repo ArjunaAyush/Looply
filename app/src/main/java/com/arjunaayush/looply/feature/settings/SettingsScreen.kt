@@ -203,6 +203,26 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
+                    if (uiState.isDownloadingBatch) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinkerlyOutlinedButton(
+                            onClick = { viewModel.stopDownloading() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            LinkerlyIcon(
+                                imageVector = LinkerlyIcons.Close,
+                                contentDescription = "Stop",
+                                tint = MaterialTheme.colorScheme.error,
+                                size = 18.dp
+                            )
+                            Spacer(modifier = Modifier.size(8.dp))
+                            Text(
+                                text = "Stop Download",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -332,6 +352,26 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
+                    if (uiState.isAutoDownloading) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinkerlyOutlinedButton(
+                            onClick = { viewModel.stopDownloading() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            LinkerlyIcon(
+                                imageVector = LinkerlyIcons.Close,
+                                contentDescription = "Stop",
+                                tint = MaterialTheme.colorScheme.error,
+                                size = 18.dp
+                            )
+                            Spacer(modifier = Modifier.size(8.dp))
+                            Text(
+                                text = "Stop Auto-Download",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
                 }
             }
         }
