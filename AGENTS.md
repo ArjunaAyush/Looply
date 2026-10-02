@@ -5,7 +5,7 @@ Language: Kotlin
 UI Framework: Jetpack Compose (Material 3)
 Architecture: MVVM + UseCase + Repository
 Dependency Injection: Hilt
-Minimum SDK: API 26 (Android 8.0 Oreo)
+Minimum SDK: API 28 (Android 9.0 Pie)
 Compile SDK: 37
 Target SDK: 37
 Package: com.arjunaayush.looply
@@ -71,7 +71,7 @@ Avoid turning the app into:
 - **HapticsManager** for tactile user feedback (vibrations only, no audio effects)
 - **Linkerly Design System components** (`LinkerlyCard`, `LinkerlyButton`, `LinkerlyIcons`, `LinkerlyNavigationBar`, etc.)
 - **LinkerlyIcons** for all vector UI elements (strictly ZERO emojis in production UI)
-- **Linkerly Proprietary License**: All Linkerly Design System components, icons, and styling are proprietary assets of Ayush Arjuna and subject to `LICENSE_LINKERLY.md`. They must NOT be used outside of Looply without explicit permission.
+- **Linkerly Proprietary License**: All Linkerly Design System components, icons, and styling are proprietary assets of Bhaskar Patel and Amurot and subject to `LICENSE_LINKERLY.md`. They must NOT be used outside of Looply without explicit permission.
 
 ## AVOID
 - premature optimization and enterprise abstraction
