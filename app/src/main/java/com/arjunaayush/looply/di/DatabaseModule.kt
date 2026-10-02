@@ -2,6 +2,7 @@ package com.arjunaayush.looply.di
 
 import android.content.Context
 import com.arjunaayush.looply.core.database.VideoDatabase
+import com.arjunaayush.looply.core.database.dao.PendingReelDao
 import com.arjunaayush.looply.core.database.dao.VideoDao
 import dagger.Module
 import dagger.Provides
@@ -24,4 +25,9 @@ object DatabaseModule {
     fun provideVideoDao(
         database: VideoDatabase
     ): VideoDao = database.videoDao()
+
+    @Provides
+    fun providePendingReelDao(
+        database: VideoDatabase
+    ): PendingReelDao = database.pendingReelDao()
 }
