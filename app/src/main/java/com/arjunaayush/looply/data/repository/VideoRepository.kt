@@ -12,14 +12,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * Unified VideoRepository connecting background download workers to the Room database.
  * Directly updates Room database so Jetpack Compose UI (Reels and Saved screens) reacts automatically.
  */
-class VideoRepository(
-    private val context: Context,
+@Singleton
+class VideoRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     val storageManager: VideoStorageManager = VideoStorageManager(context),
     private val database: VideoDatabase = VideoDatabase.getInstance(context)
 ) {

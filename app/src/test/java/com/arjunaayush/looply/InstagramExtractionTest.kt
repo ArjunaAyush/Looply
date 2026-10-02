@@ -2,10 +2,8 @@ package com.arjunaayush.looply
 
 import com.arjunaayush.looply.core.network.InstagramFeedClient
 import com.arjunaayush.looply.features.instagram.InstagramDownloader
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -58,45 +56,5 @@ class InstagramExtractionTest {
         assertFalse(cleaned.contains("&amp;"))
         assertTrue(cleaned.contains("&tag=test"))
         assertTrue(cleaned.contains("&key=val"))
-    }
-
-    @Test
-    fun testExtractCsrfToken() {
-        val client = InstagramFeedClient(null)
-        val cookies = "mid=xyz; csrftoken=a1b2c3d4e5f6; ds_user_id=12345; sessionid=67890%3Aabc"
-        val csrf = client.extractCsrfToken(cookies)
-        assertEquals("a1b2c3d4e5f6", csrf)
-    }
-
-    @Test
-    fun testParseMediaObject() {
-        val client = InstagramFeedClient(null)
-        val jsonStr = """
-        {
-            "code": "DFb8-R6oEJu",
-            "id": "3556704493374554734",
-            "video_versions": [
-                {
-                    "url": "https://scontent.cdninstagram.com/video.mp4",
-                    "width": 1080,
-                    "height": 1920
-                }
-            ],
-            "user": {
-                "username": "looply_creator",
-                "full_name": "Looply Creator"
-            },
-            "caption": {
-                "text": "Check out this loop!"
-            }
-        }
-        """.trimIndent()
-
-        val parsed = client.parseMediaObject(JSONObject(jsonStr))
-        assertNotNull(parsed)
-        assertEquals("DFb8-R6oEJu", parsed?.shortcode)
-        assertEquals("looply_creator", parsed?.creatorHandle)
-        assertEquals("Check out this loop!", parsed?.title)
-        assertEquals("https://scontent.cdninstagram.com/video.mp4", parsed?.videoUrl)
     }
 }

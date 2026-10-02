@@ -13,7 +13,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import com.arjunaayush.looply.core.network.InstagramFeedClient
 import com.arjunaayush.looply.core.preferences.PreferencesManager
 import com.arjunaayush.looply.domain.model.Video
 import com.arjunaayush.looply.data.repository.VideoRepository
