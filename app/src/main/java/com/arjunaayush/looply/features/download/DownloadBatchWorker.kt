@@ -23,6 +23,7 @@ import com.arjunaayush.looply.core.network.FeedReel
 import com.arjunaayush.looply.core.network.InstagramFeedClient
 import com.arjunaayush.looply.data.repository.VideoRepository
 import com.arjunaayush.looply.features.importvideo.ImportedVideoDetails
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -82,80 +83,91 @@ class DownloadBatchWorker(
             Log.w(TAG, "Could not set foreground service: ${e.message}")
         }
 
-        val repository = VideoRepository(context)
-        val feedClient = InstagramFeedClient()
+        try {
+            val repository = VideoRepository(context)
+            val feedClient = InstagramFeedClient(context)
 
-        updateProgress(0, targetMb, 0, "Fetching reels from your algorithm...")
+            updateProgress(0, targetMb, 0, "Fetching reels from your algorithm...")
 
-        val candidateReels = feedClient.fetchAlgorithmReels(minCount = (targetMb / 15).coerceAtLeast(10))
-        if (candidateReels.isEmpty()) {
-            showFinishedNotification("No reels found", "Could not fetch reels. Please verify Instagram login.")
-            return@withContext Result.failure(workDataOf(KEY_STATUS_MESSAGE to "No reels found"))
-        }
-
-        var totalBytesDownloaded = 0L
-        var savedCount = 0
-
-        for (reel in candidateReels) {
-            if (isStopped) break
-
-            // Skip if already downloaded
-            if (repository.isVideoAlreadyDownloaded(reel.shortcode)) {
-                continue
+            val candidateReels = feedClient.fetchAlgorithmReels(minCount = (targetMb / 15).coerceAtLeast(10))
+            if (candidateReels.isEmpty()) {
+                Log.w(TAG, "No reels returned from algorithm fetch")
+                showFinishedNotification("No reels found", "Could not fetch reels. Please verify Instagram login in Settings.")
+                return@withContext Result.failure(workDataOf(KEY_STATUS_MESSAGE to "No reels found"))
             }
 
-            val downloadedFile = downloadVideoFile(reel, totalBytesDownloaded, targetBytes, targetMb, savedCount) { bytesInFile ->
-                val currentTotal = totalBytesDownloaded + bytesInFile
-                val currentMb = (currentTotal / (1024 * 1024)).toInt()
-                val percent = ((currentTotal.toDouble() / targetBytes) * 100).toInt().coerceIn(0, 100)
-                val status = "Downloading: $currentMb MB / $targetMb MB ($percent%) • Reel #${savedCount + 1}"
+            var totalBytesDownloaded = 0L
+            var savedCount = 0
 
-                updateProgress(currentMb, targetMb, percent, status)
-                val notif = buildProgressNotification(currentMb, targetMb, percent, status)
-                notificationManager.notify(NOTIFICATION_ID, notif)
-            }
+            for (reel in candidateReels) {
+                if (isStopped) break
 
-            if (downloadedFile != null && downloadedFile.exists() && downloadedFile.length() > 0) {
-                totalBytesDownloaded += downloadedFile.length()
-                savedCount++
-
-                // Register file in database
-                registerVideoInRepository(repository, downloadedFile, reel)
-
-                // Send broadcast for UI update
-                val broadcastIntent = Intent(DownloadReelWorker.ACTION_DOWNLOAD_COMPLETE).apply {
-                    setPackage(context.packageName)
-                    putExtra(DownloadReelWorker.KEY_VIDEO_ID, downloadedFile.nameWithoutExtension)
+                // Skip if already downloaded
+                if (repository.isVideoAlreadyDownloaded(reel.shortcode)) {
+                    continue
                 }
-                context.sendBroadcast(broadcastIntent)
+
+                val downloadedFile = downloadVideoFile(reel, totalBytesDownloaded, targetBytes, targetMb, savedCount) { bytesInFile ->
+                    val currentTotal = totalBytesDownloaded + bytesInFile
+                    val currentMb = (currentTotal / (1024 * 1024)).toInt()
+                    val percent = ((currentTotal.toDouble() / targetBytes) * 100).toInt().coerceIn(0, 100)
+                    val status = "Downloading: $currentMb MB / $targetMb MB ($percent%) • Reel #${savedCount + 1}"
+
+                    updateProgress(currentMb, targetMb, percent, status)
+                    val notif = buildProgressNotification(currentMb, targetMb, percent, status)
+                    notificationManager.notify(NOTIFICATION_ID, notif)
+                }
+
+                if (downloadedFile != null && downloadedFile.exists() && downloadedFile.length() > 0) {
+                    totalBytesDownloaded += downloadedFile.length()
+                    savedCount++
+
+                    // Register file in database
+                    registerVideoInRepository(repository, downloadedFile, reel)
+
+                    // Send broadcast for UI update
+                    val broadcastIntent = Intent(DownloadReelWorker.ACTION_DOWNLOAD_COMPLETE).apply {
+                        setPackage(context.packageName)
+                        putExtra(DownloadReelWorker.KEY_VIDEO_ID, downloadedFile.nameWithoutExtension)
+                    }
+                    context.sendBroadcast(broadcastIntent)
+                }
+
+                if (totalBytesDownloaded >= targetBytes) {
+                    break
+                }
             }
 
-            if (totalBytesDownloaded >= targetBytes) {
-                break
-            }
-        }
-
-        val finalDownloadedMb = (totalBytesDownloaded / (1024 * 1024)).toInt()
-        showFinishedNotification(
-            title = "Batch Download Complete",
-            subtitle = "Saved $finalDownloadedMb MB of loops offline ($savedCount reels)"
-        )
-
-        updateProgress(finalDownloadedMb, targetMb, 100, "Completed: Saved $finalDownloadedMb MB ($savedCount reels)")
-
-        val completionIntent = Intent(ACTION_BATCH_DOWNLOAD_COMPLETE).apply {
-            setPackage(context.packageName)
-            putExtra(KEY_DOWNLOADED_MB, finalDownloadedMb)
-            putExtra(KEY_REELS_SAVED_COUNT, savedCount)
-        }
-        context.sendBroadcast(completionIntent)
-
-        Result.success(
-            workDataOf(
-                KEY_DOWNLOADED_MB to finalDownloadedMb,
-                KEY_REELS_SAVED_COUNT to savedCount
+            val finalDownloadedMb = (totalBytesDownloaded / (1024 * 1024)).toInt()
+            showFinishedNotification(
+                title = "Batch Download Complete",
+                subtitle = "Saved $finalDownloadedMb MB of loops offline ($savedCount reels)"
             )
-        )
+
+            updateProgress(finalDownloadedMb, targetMb, 100, "Completed: Saved $finalDownloadedMb MB ($savedCount reels)")
+
+            val completionIntent = Intent(ACTION_BATCH_DOWNLOAD_COMPLETE).apply {
+                setPackage(context.packageName)
+                putExtra(KEY_DOWNLOADED_MB, finalDownloadedMb)
+                putExtra(KEY_REELS_SAVED_COUNT, savedCount)
+            }
+            context.sendBroadcast(completionIntent)
+
+            Result.success(
+                workDataOf(
+                    KEY_DOWNLOADED_MB to finalDownloadedMb,
+                    KEY_REELS_SAVED_COUNT to savedCount
+                )
+            )
+        } catch (e: CancellationException) {
+            Log.d(TAG, "DownloadBatchWorker was cancelled gracefully.")
+            notificationManager.cancel(NOTIFICATION_ID)
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "DownloadBatchWorker failed: ${e.message}", e)
+            showFinishedNotification("Batch Download Interrupted", e.message ?: "Network error")
+            Result.failure(workDataOf(KEY_STATUS_MESSAGE to (e.message ?: "Failed")))
+        }
     }
 
     private fun updateProgress(

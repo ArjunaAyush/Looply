@@ -21,6 +21,7 @@ import com.arjunaayush.looply.core.network.InstagramFeedClient
 import com.arjunaayush.looply.core.preferences.PreferencesManager
 import com.arjunaayush.looply.data.repository.VideoRepository
 import com.arjunaayush.looply.features.importvideo.ImportedVideoDetails
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -88,65 +89,77 @@ class AutoDownloadWorker(
             Log.w(TAG, "Could not set foreground service: ${e.message}")
         }
 
-        val feedClient = InstagramFeedClient()
-        val candidateReels = feedClient.fetchAlgorithmReels(minCount = (targetMb / 15).coerceAtLeast(8))
+        try {
+            val feedClient = InstagramFeedClient(context)
+            val candidateReels = feedClient.fetchAlgorithmReels(minCount = (targetMb / 15).coerceAtLeast(8))
 
-        if (candidateReels.isEmpty()) {
-            return@withContext Result.success()
-        }
-
-        var totalBytesDownloaded = 0L
-        var savedCount = 0
-
-        for (reel in candidateReels) {
-            if (isStopped) break
-
-            if (repository.isVideoAlreadyDownloaded(reel.shortcode)) {
-                continue
+            if (candidateReels.isEmpty()) {
+                Log.d(TAG, "Auto-download: No new candidate reels found in feed")
+                notificationManager.cancel(NOTIFICATION_ID)
+                return@withContext Result.success()
             }
 
-            val downloadedFile = downloadVideoFile(reel, totalBytesDownloaded, targetBytes) { bytesInFile ->
-                val currentTotal = totalBytesDownloaded + bytesInFile
-                val currentMb = (currentTotal / (1024 * 1024)).toInt()
-                val percent = ((currentTotal.toDouble() / targetBytes) * 100).toInt().coerceIn(0, 100)
-                val status = "Auto-downloading: $currentMb MB / $targetMb MB • Reel #${savedCount + 1}"
+            var totalBytesDownloaded = 0L
+            var savedCount = 0
 
-                updateProgress(currentMb, targetMb, percent, status)
-                val notif = buildNotification(currentMb, targetMb, percent, status)
-                notificationManager.notify(NOTIFICATION_ID, notif)
-            }
+            for (reel in candidateReels) {
+                if (isStopped) break
 
-            if (downloadedFile != null && downloadedFile.exists() && downloadedFile.length() > 0) {
-                totalBytesDownloaded += downloadedFile.length()
-                savedCount++
-
-                registerVideoInRepository(repository, downloadedFile, reel)
-
-                val broadcastIntent = Intent(DownloadReelWorker.ACTION_DOWNLOAD_COMPLETE).apply {
-                    setPackage(context.packageName)
-                    putExtra(DownloadReelWorker.KEY_VIDEO_ID, downloadedFile.nameWithoutExtension)
+                if (repository.isVideoAlreadyDownloaded(reel.shortcode)) {
+                    continue
                 }
-                context.sendBroadcast(broadcastIntent)
+
+                val downloadedFile = downloadVideoFile(reel, totalBytesDownloaded, targetBytes) { bytesInFile ->
+                    val currentTotal = totalBytesDownloaded + bytesInFile
+                    val currentMb = (currentTotal / (1024 * 1024)).toInt()
+                    val percent = ((currentTotal.toDouble() / targetBytes) * 100).toInt().coerceIn(0, 100)
+                    val status = "Auto-downloading: $currentMb MB / $targetMb MB • Reel #${savedCount + 1}"
+
+                    updateProgress(currentMb, targetMb, percent, status)
+                    val notif = buildNotification(currentMb, targetMb, percent, status)
+                    notificationManager.notify(NOTIFICATION_ID, notif)
+                }
+
+                if (downloadedFile != null && downloadedFile.exists() && downloadedFile.length() > 0) {
+                    totalBytesDownloaded += downloadedFile.length()
+                    savedCount++
+
+                    registerVideoInRepository(repository, downloadedFile, reel)
+
+                    val broadcastIntent = Intent(DownloadReelWorker.ACTION_DOWNLOAD_COMPLETE).apply {
+                        setPackage(context.packageName)
+                        putExtra(DownloadReelWorker.KEY_VIDEO_ID, downloadedFile.nameWithoutExtension)
+                    }
+                    context.sendBroadcast(broadcastIntent)
+                }
+
+                if (totalBytesDownloaded >= targetBytes) {
+                    break
+                }
             }
 
-            if (totalBytesDownloaded >= targetBytes) {
-                break
+            val finalMb = (totalBytesDownloaded / (1024 * 1024)).toInt()
+            if (savedCount > 0) {
+                showCompletedNotification("Auto-Download Complete", "Saved $savedCount fresh loops offline ($finalMb MB)")
+            } else {
+                notificationManager.cancel(NOTIFICATION_ID)
             }
-        }
 
-        val finalMb = (totalBytesDownloaded / (1024 * 1024)).toInt()
-        if (savedCount > 0) {
-            showCompletedNotification("Auto-Download Complete", "Saved $savedCount fresh loops offline ($finalMb MB)")
-        } else {
-            notificationManager.cancel(NOTIFICATION_ID)
-        }
-
-        Result.success(
-            workDataOf(
-                KEY_DOWNLOADED_MB to finalMb,
-                KEY_STATUS_MESSAGE to "Auto-download finished ($savedCount reels)"
+            Result.success(
+                workDataOf(
+                    KEY_DOWNLOADED_MB to finalMb,
+                    KEY_STATUS_MESSAGE to "Auto-download finished ($savedCount reels)"
+                )
             )
-        )
+        } catch (e: CancellationException) {
+            Log.d(TAG, "AutoDownloadWorker was cancelled gracefully.")
+            notificationManager.cancel(NOTIFICATION_ID)
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "AutoDownloadWorker failed: ${e.message}", e)
+            notificationManager.cancel(NOTIFICATION_ID)
+            Result.failure(workDataOf(KEY_STATUS_MESSAGE to (e.message ?: "Failed")))
+        }
     }
 
     private fun cleanUpOldWatchedVideos(repository: VideoRepository) {

@@ -1,13 +1,24 @@
 package com.arjunaayush.looply.features.instagram
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import com.arjunaayush.looply.core.network.InstagramFeedClient
+import com.arjunaayush.looply.core.preferences.PreferencesManager
 import com.arjunaayush.looply.data.model.Video
 import com.arjunaayush.looply.data.repository.VideoRepository
 import com.arjunaayush.looply.features.importvideo.VideoImport
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -16,15 +27,18 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.math.BigInteger
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 
 /**
  * Direct high-performance downloader for Instagram Reels.
- * Downloads directly from Instagram CDN endpoints without using third-party proxy websites.
- * Runs all network, extraction, and file operations on Dispatchers.IO.
+ * Resolves streams directly from Instagram using official media endpoints when logged in,
+ * and a headless offscreen Instagram WebView stream interceptor for public/unauthenticated reels.
+ * Runs all network and file operations strictly on Dispatchers.IO.
  */
 class InstagramDownloader(
     private val context: Context,
@@ -35,6 +49,7 @@ class InstagramDownloader(
 
     private val appContext: Context = context.applicationContext
     private val TAG = "InstagramDownloader"
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     interface DownloadCallback {
         fun onProgress(message: String)
@@ -45,11 +60,11 @@ class InstagramDownloader(
     companion object {
         private const val USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+        private const val MOBILE_USER_AGENT =
+            "Instagram 319.0.0.36.108 Android (33/13; 480dpi; 1080x2400; samsung; SM-G998B; p3s; exynos2100; en_US; 570123456)"
         private const val IG_APP_ID = "936619743392459"
+        private const val ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 
-        /**
-         * Extracts the shortcode from any Instagram URL format.
-         */
         fun extractShortcode(url: String): String? {
             val cleanUrl = url.split("?").first().trimEnd('/')
             val regex = Regex("""/(?:reels?|p|share/reel|share/p)/([A-Za-z0-9_-]+)""")
@@ -60,21 +75,19 @@ class InstagramDownloader(
             return parts.lastOrNull()?.takeIf { it.length in 9..14 }
         }
 
-        /**
-         * Normalizes an Instagram URL to a standard reel endpoint.
-         */
-        fun normalizeInstagramUrl(rawUrl: String): String {
-            val shortcode = extractShortcode(rawUrl)
-            return if (shortcode != null) {
-                "https://www.instagram.com/reel/$shortcode/"
-            } else {
-                rawUrl.split("?").first()
+        fun shortcodeToMediaId(shortcode: String): String {
+            val cleanCode = if (shortcode.length > 28) shortcode.substring(0, shortcode.length - 28) else shortcode
+            var id = BigInteger.ZERO
+            val base = BigInteger.valueOf(64)
+            for (ch in cleanCode) {
+                val index = ALPHABET.indexOf(ch)
+                if (index >= 0) {
+                    id = id.multiply(base).add(BigInteger.valueOf(index.toLong()))
+                }
             }
+            return id.toString()
         }
 
-        /**
-         * Cleans Meta CDN URLs by stripping byte-range chunk parameters and unescaping symbols.
-         */
         fun cleanCdnVideoUrl(url: String): String {
             return url.replace(Regex("""[&?]bytestart=\d+"""), "")
                 .replace(Regex("""[&?]byteend=\d+"""), "")
@@ -83,9 +96,6 @@ class InstagramDownloader(
                 .replace("&amp;", "&")
         }
 
-        /**
-         * Strictly verifies if a given URL is a video stream and NOT a thumbnail image.
-         */
         fun isValidVideoStream(url: String): Boolean {
             val lower = url.lowercase()
             if (lower.contains(".jpg") || lower.contains(".jpeg") || lower.contains(".webp") ||
@@ -96,348 +106,362 @@ class InstagramDownloader(
             }
 
             return lower.contains(".mp4") || lower.contains("/o1/v/") || lower.contains("video_dashinit") ||
-                    lower.contains("mime_type=video") || lower.contains("/v/t50") || lower.contains("cdninstagram.com")
+                    lower.contains("mime_type=video") || lower.contains("/v/t50") ||
+                    (lower.contains("cdninstagram.com") && lower.contains("video"))
         }
     }
 
-    /**
-     * Extracts active cookies from system CookieManager for authenticated requests.
-     */
     private fun getInstagramCookies(): String {
-        return try {
-            val cm = CookieManager.getInstance()
-            val c1 = cm.getCookie("https://www.instagram.com") ?: ""
-            val c2 = cm.getCookie("https://instagram.com") ?: ""
-            val c3 = cm.getCookie(".instagram.com") ?: ""
-            val parts = "$c1; $c2; $c3".split(";").map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-            parts.joinToString("; ")
-        } catch (_: Exception) {
-            ""
-        }
+        val prefCookies = try {
+            PreferencesManager(appContext).getInstagramCookies()
+        } catch (_: Exception) { "" }
+
+        val cm = try { CookieManager.getInstance() } catch (_: Exception) { null }
+        val c1 = cm?.getCookie("https://www.instagram.com") ?: ""
+        val c2 = cm?.getCookie("https://instagram.com") ?: ""
+        val c3 = cm?.getCookie("https://m.instagram.com") ?: ""
+        val c4 = cm?.getCookie(".instagram.com") ?: ""
+
+        val combined = "$prefCookies; $c1; $c2; $c3; $c4"
+        val parts = combined.split(";").map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        return parts.joinToString("; ")
     }
 
     /**
-     * Suspend-friendly direct download method for Coroutines and WorkManager.
+     * Direct suspendable method for Coroutines and WorkManager.
      */
     suspend fun downloadReelSuspend(
         instagramUrl: String,
         onProgress: (String) -> Unit = {}
-    ): Video? = suspendCancellableCoroutine { continuation ->
-        downloadReel(instagramUrl, object : DownloadCallback {
-            override fun onProgress(message: String) {
-                onProgress(message)
-            }
+    ): Video? = withContext(Dispatchers.IO) {
+        val shortcode = extractShortcode(instagramUrl)
+        Log.d(TAG, "Starting reel download for: $instagramUrl (extracted shortcode: $shortcode)")
 
-            override fun onSuccess(savedVideo: Video) {
-                if (continuation.isActive) {
-                    continuation.resume(savedVideo)
-                }
-            }
+        // 1. Direct video link (.mp4)
+        if (isValidVideoStream(instagramUrl)) {
+            Log.d(TAG, "URL is already a valid video stream: $instagramUrl")
+            onProgress("Downloading direct video stream...")
+            return@withContext downloadAndSaveVideo(instagramUrl, shortcode)
+        }
 
-            override fun onFailure(errorMessage: String) {
-                if (continuation.isActive) {
-                    continuation.resume(null)
-                }
+        if (shortcode.isNullOrBlank()) {
+            Log.w(TAG, "Could not extract valid shortcode from: $instagramUrl")
+            return@withContext null
+        }
+
+        val cookies = getInstagramCookies()
+        val mediaId = shortcodeToMediaId(shortcode)
+        Log.d(TAG, "Resolved shortcode $shortcode -> mediaId: $mediaId (has session: ${cookies.contains("sessionid")})")
+
+        // 2. Direct Instagram Media API (Fast path for authenticated sessions)
+        onProgress("Connecting to Instagram... ⚡")
+        var streamUrl: String? = null
+
+        if (cookies.contains("sessionid") && mediaId.isNotBlank()) {
+            onProgress("Querying reel metadata... ⏳")
+            streamUrl = fetchFromMediaInfoApi(mediaId, shortcode, cookies)
+            Log.d(TAG, "Media info API returned stream: ${streamUrl != null}")
+        }
+
+        // 3. Direct /?__a=1&__d=dis endpoint
+        if (streamUrl == null) {
+            streamUrl = fetchFromDirectEndpoint(shortcode, cookies)
+            Log.d(TAG, "Direct /?__a=1 endpoint returned stream: ${streamUrl != null}")
+        }
+
+        // 4. Fallback: Headless Offscreen Instagram WebView Stream Interceptor
+        if (streamUrl == null) {
+            onProgress("Resolving stream via Instagram Web Player... ⏳")
+            Log.d(TAG, "Launching Headless Instagram WebView Resolver for shortcode: $shortcode")
+            streamUrl = resolveViaHeadlessWebView(shortcode)
+            Log.d(TAG, "Headless WebView Resolver returned stream: ${streamUrl != null}")
+        }
+
+        // 5. Download video stream if resolved
+        if (streamUrl != null && isValidVideoStream(streamUrl)) {
+            onProgress("Stream found! Downloading video file... 📥")
+            Log.d(TAG, "Downloading video stream: $streamUrl")
+            val savedVideo = downloadAndSaveVideo(streamUrl, shortcode)
+            if (savedVideo != null) {
+                Log.d(TAG, "Reel saved successfully: ${savedVideo.id} (${savedVideo.title})")
+                return@withContext savedVideo
+            } else {
+                Log.e(TAG, "Failed to download and import stream from $streamUrl")
             }
-        })
+        } else {
+            Log.w(TAG, "Could not resolve video stream for shortcode: $shortcode")
+        }
+
+        return@withContext null
     }
 
     /**
-     * Main entry point to directly download an Instagram Reel.
-     * Executes entirely on Dispatchers.IO with progress reported back to the caller.
+     * Legacy callback method for non-coroutine callers.
      */
     fun downloadReel(instagramUrl: String, callback: DownloadCallback) {
-        val shortcode = extractShortcode(instagramUrl)
-
-        callback.onProgress("Connecting to Instagram... ⚡")
-
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // If url is already a direct video stream
-                if (isValidVideoStream(instagramUrl)) {
-                    withContext(Dispatchers.Main) { callback.onProgress("Downloading direct video stream...") }
-                    val saved = downloadAndSaveVideo(instagramUrl, shortcode)
-                    withContext(Dispatchers.Main) {
-                        if (saved != null) callback.onSuccess(saved)
-                        else callback.onFailure("Failed to download video stream.")
-                    }
-                    return@launch
+                val video = downloadReelSuspend(instagramUrl) { msg ->
+                    mainHandler.post { callback.onProgress(msg) }
                 }
-
-                if (shortcode.isNullOrBlank()) {
-                    withContext(Dispatchers.Main) {
-                        callback.onFailure("Could not extract a valid Instagram reel identifier from link.")
-                    }
-                    return@launch
-                }
-
-                val cookies = getInstagramCookies()
-
-                // Strategy 1: Direct Instagram API /?__a=1&__d=dis
-                withContext(Dispatchers.Main) { callback.onProgress("Fetching reel stream from Instagram... ⏳") }
-                var streamUrl = fetchFromDirectApi(shortcode, cookies)
-
-                // Strategy 2: GraphQL query fallback
-                if (streamUrl == null) {
-                    streamUrl = fetchFromGraphQl(shortcode, cookies)
-                }
-
-                // Strategy 3: Embed page metadata extraction
-                if (streamUrl == null) {
-                    streamUrl = fetchFromEmbed(shortcode, cookies)
-                }
-
-                // Strategy 4: Web HTML OpenGraph & Script tags fallback
-                if (streamUrl == null) {
-                    streamUrl = fetchFromHtml(shortcode, cookies)
-                }
-
-                if (streamUrl != null && isValidVideoStream(streamUrl)) {
-                    withContext(Dispatchers.Main) { callback.onProgress("Stream found! Downloading video... 📥") }
-                    val saved = downloadAndSaveVideo(streamUrl, shortcode)
-                    withContext(Dispatchers.Main) {
-                        if (saved != null) {
-                            callback.onSuccess(saved)
-                        } else {
-                            callback.onFailure("Failed to save downloaded video to offline library.")
-                        }
-                    }
-                } else {
-                    withContext(Dispatchers.Main) {
-                        val authHint = if (!cookies.contains("sessionid")) " (Tip: Connect your Instagram account in Settings to access reels reliably)" else ""
-                        callback.onFailure("Could not resolve video stream from Instagram direct link$authHint.")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error downloading reel: ${e.message}", e)
                 withContext(Dispatchers.Main) {
-                    callback.onFailure("Error downloading reel: ${e.message}")
+                    if (video != null) callback.onSuccess(video)
+                    else callback.onFailure("Could not resolve or download reel from Instagram.")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "downloadReel error: ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    callback.onFailure(e.message ?: "Download failed")
                 }
             }
         }
     }
 
     /**
-     * Strategy 1: Fetch reel stream via Instagram's web info endpoint.
+     * Strategy 1: Authenticated Media Info API
      */
-    private fun fetchFromDirectApi(shortcode: String, cookies: String): String? {
+    private fun fetchFromMediaInfoApi(mediaId: String, shortcode: String, cookies: String): String? {
+        val endpoints = listOf(
+            "https://www.instagram.com/api/v1/media/$mediaId/info/",
+            "https://i.instagram.com/api/v1/media/$mediaId/info/"
+        )
+
+        for (endpoint in endpoints) {
+            var conn: HttpURLConnection? = null
+            try {
+                val url = URL(endpoint)
+                conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 8000
+                    readTimeout = 8000
+                    setRequestProperty("User-Agent", USER_AGENT)
+                    setRequestProperty("Cookie", cookies)
+                    setRequestProperty("X-IG-App-ID", IG_APP_ID)
+                    setRequestProperty("X-ASBD-ID", "359341")
+                    setRequestProperty("X-IG-WWW-Claim", "0")
+                    setRequestProperty("X-Requested-With", "XMLHttpRequest")
+                    setRequestProperty("Referer", "https://www.instagram.com/reel/$shortcode/")
+                }
+
+                val code = conn.responseCode
+                Log.d(TAG, "Media info API ($endpoint) HTTP $code")
+                if (code in 200..299) {
+                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                    val root = JSONObject(jsonStr)
+                    val items = root.optJSONArray("items")
+                    if (items != null && items.length() > 0) {
+                        val item = items.getJSONObject(0)
+                        val videoVersions = item.optJSONArray("video_versions")
+                        if (videoVersions != null && videoVersions.length() > 0) {
+                            val stream = videoVersions.getJSONObject(0).optString("url")
+                            if (stream.isNotBlank()) {
+                                return cleanCdnVideoUrl(stream)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "Media info endpoint failed ($endpoint): ${e.message}")
+            } finally {
+                conn?.disconnect()
+            }
+        }
+        return null
+    }
+
+    /**
+     * Strategy 2: Direct web JSON endpoint
+     */
+    private fun fetchFromDirectEndpoint(shortcode: String, cookies: String): String? {
         val endpoints = listOf(
             "https://www.instagram.com/reel/$shortcode/?__a=1&__d=dis",
             "https://www.instagram.com/p/$shortcode/?__a=1&__d=dis"
         )
 
         for (endpoint in endpoints) {
+            var conn: HttpURLConnection? = null
             try {
                 val url = URL(endpoint)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.setRequestProperty("User-Agent", USER_AGENT)
-                conn.setRequestProperty("X-IG-App-ID", IG_APP_ID)
-                conn.setRequestProperty("X-Requested-With", "XMLHttpRequest")
-                conn.setRequestProperty("Accept", "application/json, text/plain, */*")
-                conn.setRequestProperty("Referer", "https://www.instagram.com/reel/$shortcode/")
-                if (cookies.isNotBlank()) {
-                    conn.setRequestProperty("Cookie", cookies)
+                conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 8000
+                    readTimeout = 8000
+                    setRequestProperty("User-Agent", USER_AGENT)
+                    setRequestProperty("Cookie", cookies)
+                    setRequestProperty("X-IG-App-ID", IG_APP_ID)
+                    setRequestProperty("X-Requested-With", "XMLHttpRequest")
+                    setRequestProperty("Referer", "https://www.instagram.com/reel/$shortcode/")
                 }
-                conn.connectTimeout = 8000
-                conn.readTimeout = 8000
 
-                if (conn.responseCode in 200..299) {
-                    val responseText = conn.inputStream.bufferedReader().use { it.readText() }
-                    val stream = extractStreamFromJson(responseText)
-                    if (stream != null) return stream
-                }
-            } catch (e: Exception) {
-                Log.d(TAG, "Direct API endpoint failed for $endpoint: ${e.message}")
-            }
-        }
-        return null
-    }
-
-    /**
-     * Strategy 2: Fetch reel stream via GraphQL query endpoint.
-     */
-    private fun fetchFromGraphQl(shortcode: String, cookies: String): String? {
-        try {
-            val queryUrl = "https://www.instagram.com/graphql/query/?query_hash=b3055c2c4779f6046347356bae831726&variables=%7B%22shortcode%22%3A%22$shortcode%22%7D"
-            val url = URL(queryUrl)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.setRequestProperty("User-Agent", USER_AGENT)
-            conn.setRequestProperty("X-IG-App-ID", IG_APP_ID)
-            conn.setRequestProperty("X-Requested-With", "XMLHttpRequest")
-            conn.setRequestProperty("Accept", "application/json, text/plain, */*")
-            conn.setRequestProperty("Referer", "https://www.instagram.com/reel/$shortcode/")
-            if (cookies.isNotBlank()) {
-                conn.setRequestProperty("Cookie", cookies)
-            }
-            conn.connectTimeout = 8000
-            conn.readTimeout = 8000
-
-            if (conn.responseCode in 200..299) {
-                val responseText = conn.inputStream.bufferedReader().use { it.readText() }
-                val stream = extractStreamFromJson(responseText)
-                if (stream != null) return stream
-            }
-        } catch (e: Exception) {
-            Log.d(TAG, "GraphQL query failed: ${e.message}")
-        }
-        return null
-    }
-
-    /**
-     * Extracts direct video stream URL from Instagram JSON structures.
-     */
-    private fun extractStreamFromJson(jsonStr: String): String? {
-        try {
-            val root = JSONObject(jsonStr)
-
-            // Format A: items array
-            val items = root.optJSONArray("items")
-            if (items != null && items.length() > 0) {
-                val item = items.getJSONObject(0)
-                val videoVersions = item.optJSONArray("video_versions")
-                if (videoVersions != null && videoVersions.length() > 0) {
-                    val bestVideo = videoVersions.getJSONObject(0)
-                    val rawUrl = bestVideo.optString("url")
-                    if (rawUrl.isNotBlank()) {
-                        return cleanCdnVideoUrl(rawUrl)
-                    }
-                }
-            }
-
-            // Format B: graphql shortcode_media
-            val dataObj = root.optJSONObject("data")
-            val mediaObj = dataObj?.optJSONObject("shortcode_media")
-                ?: root.optJSONObject("graphql")?.optJSONObject("shortcode_media")
-
-            if (mediaObj != null) {
-                val videoUrl = mediaObj.optString("video_url")
-                if (videoUrl.isNotBlank()) {
-                    return cleanCdnVideoUrl(videoUrl)
-                }
-            }
-        } catch (e: Exception) {
-            Log.d(TAG, "JSON parse error: ${e.message}")
-        }
-        return null
-    }
-
-    /**
-     * Strategy 3: Embed page video extraction (works without login for public reels).
-     */
-    private fun fetchFromEmbed(shortcode: String, cookies: String): String? {
-        val embedUrls = listOf(
-            "https://www.instagram.com/p/$shortcode/embed/captioned/",
-            "https://www.instagram.com/reel/$shortcode/embed/captioned/"
-        )
-
-        for (endpoint in embedUrls) {
-            try {
-                val url = URL(endpoint)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.setRequestProperty("User-Agent", USER_AGENT)
-                conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                if (cookies.isNotBlank()) {
-                    conn.setRequestProperty("Cookie", cookies)
-                }
-                conn.connectTimeout = 6000
-                conn.readTimeout = 6000
-
-                if (conn.responseCode in 200..299) {
-                    val html = conn.inputStream.bufferedReader().use { it.readText() }
-
-                    // Pattern 1: "video_url":"..."
-                    val videoUrlRegex = Regex(""""video_url"\s*:\s*"([^"]+)"""")
-                    val match1 = videoUrlRegex.find(html)
-                    if (match1 != null) {
-                        return cleanCdnVideoUrl(match1.groupValues[1])
-                    }
-
-                    // Pattern 2: <video ... src="..."
-                    val videoTagRegex = Regex("""<video[^>]+src=["']([^"']+)["']""")
-                    val match2 = videoTagRegex.find(html)
-                    if (match2 != null) {
-                        return cleanCdnVideoUrl(match2.groupValues[1])
-                    }
-
-                    // Pattern 3: og:video in embed
-                    val ogRegex = Regex("""<meta\s+property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']""")
-                    val match3 = ogRegex.find(html)
-                    if (match3 != null) {
-                        return cleanCdnVideoUrl(match3.groupValues[1])
+                val code = conn.responseCode
+                Log.d(TAG, "Direct /?__a=1 endpoint ($endpoint) HTTP $code")
+                if (code in 200..299) {
+                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                    val root = JSONObject(jsonStr)
+                    val items = root.optJSONArray("items")
+                    if (items != null && items.length() > 0) {
+                        val item = items.getJSONObject(0)
+                        val videoVersions = item.optJSONArray("video_versions")
+                        if (videoVersions != null && videoVersions.length() > 0) {
+                            val stream = videoVersions.getJSONObject(0).optString("url")
+                            if (stream.isNotBlank()) {
+                                return cleanCdnVideoUrl(stream)
+                            }
+                        }
                     }
                 }
             } catch (e: Exception) {
-                Log.d(TAG, "Embed extraction failed for $endpoint: ${e.message}")
+                Log.d(TAG, "Direct endpoint failed ($endpoint): ${e.message}")
+            } finally {
+                conn?.disconnect()
             }
         }
         return null
     }
 
     /**
-     * Strategy 4: Web page HTML direct extraction.
+     * Strategy 3: Headless Offscreen Instagram WebView Stream Interceptor.
+     * Uses Instagram's official web player to render and intercept the video CDN stream directly.
      */
-    private fun fetchFromHtml(shortcode: String, cookies: String): String? {
-        try {
-            val endpoint = "https://www.instagram.com/reel/$shortcode/"
-            val url = URL(endpoint)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.setRequestProperty("User-Agent", USER_AGENT)
-            conn.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-            if (cookies.isNotBlank()) {
-                conn.setRequestProperty("Cookie", cookies)
+    @SuppressLint("SetJavaScriptEnabled")
+    private suspend fun resolveViaHeadlessWebView(shortcode: String): String? =
+        suspendCancellableCoroutine { continuation ->
+            val isResolved = AtomicBoolean(false)
+            var webView: WebView? = null
+
+            val cleanup = Runnable {
+                try {
+                    webView?.stopLoading()
+                    webView?.removeJavascriptInterface("LooplyResolver")
+                    webView?.destroy()
+                    webView = null
+                } catch (_: Exception) {}
             }
-            conn.connectTimeout = 6000
-            conn.readTimeout = 6000
 
-            if (conn.responseCode in 200..299) {
-                val html = conn.inputStream.bufferedReader().use { it.readText() }
-
-                // Pattern 1: OpenGraph meta tag
-                val ogRegex = Regex("""<meta\s+property=["']og:video(?::secure_url)?["']\s+content=["']([^"']+)["']""")
-                val ogMatch = ogRegex.find(html)
-                if (ogMatch != null) {
-                    return cleanCdnVideoUrl(ogMatch.groupValues[1])
-                }
-
-                // Pattern 2: "video_url":"..."
-                val videoUrlRegex = Regex(""""video_url"\s*:\s*"([^"]+)"""")
-                val match = videoUrlRegex.find(html)
-                if (match != null) {
-                    return cleanCdnVideoUrl(match.groupValues[1])
+            val timeoutRunnable = Runnable {
+                if (isResolved.compareAndSet(false, true)) {
+                    Log.w(TAG, "Headless WebView timed out for shortcode: $shortcode")
+                    cleanup.run()
+                    if (continuation.isActive) {
+                        continuation.resume(null)
+                    }
                 }
             }
-        } catch (e: Exception) {
-            Log.d(TAG, "HTML extraction failed: ${e.message}")
+            mainHandler.postDelayed(timeoutRunnable, 15000)
+
+            continuation.invokeOnCancellation {
+                mainHandler.removeCallbacks(timeoutRunnable)
+                mainHandler.post(cleanup)
+            }
+
+            mainHandler.post {
+                try {
+                    val cm = CookieManager.getInstance()
+                    cm.setAcceptCookie(true)
+
+                    webView = WebView(appContext).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.mediaPlaybackRequiresUserGesture = false
+                        settings.userAgentString = USER_AGENT
+
+                        addJavascriptInterface(object {
+                            @JavascriptInterface
+                            fun onVideoFound(streamUrl: String) {
+                                if (isValidVideoStream(streamUrl) && isResolved.compareAndSet(false, true)) {
+                                    Log.d(TAG, "Captured video stream via JS: $streamUrl")
+                                    mainHandler.removeCallbacks(timeoutRunnable)
+                                    mainHandler.post(cleanup)
+                                    if (continuation.isActive) {
+                                        continuation.resume(cleanCdnVideoUrl(streamUrl))
+                                    }
+                                }
+                            }
+                        }, "LooplyResolver")
+
+                        webViewClient = object : WebViewClient() {
+                            override fun shouldInterceptRequest(
+                                view: WebView?,
+                                request: WebResourceRequest?
+                            ): WebResourceResponse? {
+                                val reqUrl = request?.url?.toString() ?: return null
+                                if (isValidVideoStream(reqUrl) && isResolved.compareAndSet(false, true)) {
+                                    Log.d(TAG, "Intercepted video stream via WebViewClient: $reqUrl")
+                                    mainHandler.removeCallbacks(timeoutRunnable)
+                                    mainHandler.post(cleanup)
+                                    if (continuation.isActive) {
+                                        continuation.resume(cleanCdnVideoUrl(reqUrl))
+                                    }
+                                }
+                                return super.shouldInterceptRequest(view, request)
+                            }
+
+                            override fun onPageFinished(view: WebView?, url: String?) {
+                                super.onPageFinished(view, url)
+                                val js = """
+                                    (function() {
+                                        function check() {
+                                            var v = document.querySelector('video');
+                                            if (v && v.src && v.src.startsWith('http')) {
+                                                window.LooplyResolver.onVideoFound(v.src);
+                                                return true;
+                                            }
+                                            return false;
+                                        }
+                                        if (!check()) {
+                                            var count = 0;
+                                            var itv = setInterval(function() {
+                                                count++;
+                                                if (check() || count > 30) clearInterval(itv);
+                                            }, 300);
+                                        }
+                                    })();
+                                """.trimIndent()
+                                view?.evaluateJavascript(js, null)
+                            }
+                        }
+
+                        loadUrl("https://www.instagram.com/reel/$shortcode/")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error initializing headless WebView: ${e.message}", e)
+                    if (isResolved.compareAndSet(false, true)) {
+                        mainHandler.removeCallbacks(timeoutRunnable)
+                        cleanup.run()
+                        if (continuation.isActive) {
+                            continuation.resume(null)
+                        }
+                    }
+                }
+            }
         }
-        return null
-    }
 
     /**
      * Downloads video stream bytes into a cache file and imports into Looply storage & database.
-     * All network and file I/O operations execute strictly on Dispatchers.IO.
      */
     fun downloadAndSaveVideo(streamUrl: String, shortcode: String? = null): Video? {
         val cleanedUrl = cleanCdnVideoUrl(streamUrl)
-        return tryDownloadFromUrl(cleanedUrl, shortcode)
-    }
-
-    private fun tryDownloadFromUrl(candidateUrl: String, shortcode: String? = null): Video? {
         val tempFile = File(appContext.cacheDir, "temp_ig_${System.currentTimeMillis()}.mp4")
-        var currentUrl = candidateUrl
+        var currentUrl = cleanedUrl
         var redirects = 0
 
         while (redirects < 5) {
+            var conn: HttpURLConnection? = null
             try {
                 val url = URL(currentUrl)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.setRequestProperty("User-Agent", USER_AGENT)
-                conn.setRequestProperty("Referer", "https://www.instagram.com/")
-                conn.setRequestProperty("Accept", "*/*")
-                conn.instanceFollowRedirects = true
-                conn.connectTimeout = 15000
-                conn.readTimeout = 40000
+                conn = (url.openConnection() as HttpURLConnection).apply {
+                    setRequestProperty("User-Agent", USER_AGENT)
+                    setRequestProperty("Referer", "https://www.instagram.com/")
+                    setRequestProperty("Accept", "*/*")
+                    instanceFollowRedirects = true
+                    connectTimeout = 15000
+                    readTimeout = 40000
+                }
 
                 val code = conn.responseCode
+                Log.d(TAG, "Stream download ($currentUrl) HTTP $code")
                 if (code in 300..399) {
                     val location = conn.getHeaderField("Location")
                     if (!location.isNullOrEmpty()) {
@@ -448,7 +472,7 @@ class InstagramDownloader(
                 }
 
                 if (code !in 200..299) {
-                    Log.w(TAG, "HTTP $code from $currentUrl")
+                    Log.w(TAG, "Stream download failed HTTP $code from $currentUrl")
                     return null
                 }
 
@@ -462,16 +486,18 @@ class InstagramDownloader(
                     }
                 }
 
+                Log.d(TAG, "Downloaded temp file size: ${tempFile.length()} bytes")
                 if (tempFile.exists() && tempFile.length() > 50_000) {
                     val videoTitle = if (!shortcode.isNullOrEmpty()) "Reel • $shortcode.mp4" else "Reel_${System.currentTimeMillis()}.mp4"
                     val importedDetails = videoImport.importVideo(Uri.fromFile(tempFile), videoTitle)
                     return repository.saveVideo(importedDetails)
                 } else {
-                    Log.w(TAG, "Downloaded file too small: ${tempFile.length()} bytes from $currentUrl")
+                    Log.w(TAG, "Downloaded file too small: ${tempFile.length()} bytes")
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Download failed from $currentUrl: ${e.message}")
+                Log.e(TAG, "Download failed from $currentUrl: ${e.message}", e)
             } finally {
+                conn?.disconnect()
                 if (tempFile.exists()) {
                     tempFile.delete()
                 }
