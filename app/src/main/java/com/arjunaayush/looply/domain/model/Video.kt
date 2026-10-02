@@ -23,4 +23,31 @@ data class Video(
         } else {
             "@creator"
         }
+
+    val file: java.io.File
+        get() = java.io.File(filePath)
+
+    val uri: android.net.Uri
+        get() = android.net.Uri.fromFile(file)
+
+    val formattedSize: String
+        get() {
+            val mb = sizeBytes / (1024.0 * 1024.0)
+            return if (mb >= 1024.0) {
+                "%.2f GB".format(mb / 1024.0)
+            } else if (mb >= 1.0) {
+                "%.1f MB".format(mb)
+            } else {
+                "${sizeBytes / 1024} KB"
+            }
+        }
+
+    val formattedDuration: String
+        get() {
+            if (durationMs <= 0) return ""
+            val totalSeconds = durationMs / 1000
+            val minutes = totalSeconds / 60
+            val seconds = totalSeconds % 60
+            return "%d:%02d".format(minutes, seconds)
+        }
 }

@@ -9,7 +9,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,13 +21,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,8 +48,6 @@ import com.arjunaayush.looply.core.designsystem.LinkerlyButton
 import com.arjunaayush.looply.core.designsystem.LinkerlyIcon
 import com.arjunaayush.looply.core.designsystem.LinkerlyIconButton
 import com.arjunaayush.looply.core.designsystem.LinkerlyIcons
-import com.arjunaayush.looply.core.designsystem.LinkerlyOutlinedButton
-import com.arjunaayush.looply.core.designsystem.LinkerlyTextButton
 import kotlinx.coroutines.delay
 
 private const val DESKTOP_USER_AGENT =
@@ -75,9 +69,6 @@ fun InstagramLoginDialog(
     var statusMessage by remember { mutableStateOf("Initializing Instagram login...") }
     var canGoBack by remember { mutableStateOf(false) }
     var useDesktopMode by remember { mutableStateOf(true) }
-    var showAdvancedImport by remember { mutableStateOf(false) }
-    var sessionCookieInput by remember { mutableStateOf("") }
-    var importErrorMessage by remember { mutableStateOf("") }
 
     fun checkAndNotifyCookies(cookieManager: CookieManager): Boolean {
         val c1 = cookieManager.getCookie("https://www.instagram.com") ?: ""
@@ -194,8 +185,8 @@ fun InstagramLoginDialog(
                             modifier = Modifier.size(36.dp)
                         ) {
                             LinkerlyIcon(
-                                imageVector = LinkerlyIcons.Tune,
-                                contentDescription = "Toggle Engine",
+                                imageVector = if (useDesktopMode) LinkerlyIcons.FolderOverlays.Laptop else LinkerlyIcons.FolderOverlays.Phone,
+                                contentDescription = if (useDesktopMode) "Desktop Web Engine (Click for Mobile)" else "Mobile Web Engine (Click for Desktop)",
                                 size = 18.dp
                             )
                         }
@@ -221,117 +212,6 @@ fun InstagramLoginDialog(
                                 contentDescription = "Close",
                                 size = 18.dp
                             )
-                        }
-                    }
-                }
-
-                // Advanced Session Cookie Import Accordion
-                AnimatedVisibility(visible = showAdvancedImport) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Advanced Session Cookie Import",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "Paste your Instagram sessionid or full cookie header string to link instantly without using the web form:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = sessionCookieInput,
-                            onValueChange = {
-                                sessionCookieInput = it
-                                importErrorMessage = ""
-                            },
-                            label = { Text("sessionid or Cookie String") },
-                            placeholder = { Text("e.g. 6283910283%3AAbCdEf...") },
-                            singleLine = false,
-                            maxLines = 3,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        if (importErrorMessage.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = importErrorMessage,
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            LinkerlyOutlinedButton(onClick = { showAdvancedImport = false }) {
-                                Text("Cancel")
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            LinkerlyButton(
-                                onClick = {
-                                    val input = sessionCookieInput.trim()
-                                    if (input.isBlank()) {
-                                        importErrorMessage = "Please paste a sessionid or cookie string."
-                                        return@LinkerlyButton
-                                    }
-                                    val cookieManager = CookieManager.getInstance()
-                                    cookieManager.setAcceptCookie(true)
-
-                                    var sessionIdVal = ""
-                                    var dsUserIdVal = ""
-
-                                    if (input.contains(";")) {
-                                        // Header string format
-                                        val parts = input.split(";")
-                                        for (p in parts) {
-                                            val trimmed = p.trim()
-                                            if (trimmed.startsWith("sessionid=")) {
-                                                sessionIdVal = trimmed.substringAfter("sessionid=")
-                                            }
-                                            if (trimmed.startsWith("ds_user_id=")) {
-                                                dsUserIdVal = trimmed.substringAfter("ds_user_id=")
-                                            }
-                                        }
-                                    } else if (input.startsWith("sessionid=")) {
-                                        sessionIdVal = input.substringAfter("sessionid=")
-                                    } else {
-                                        sessionIdVal = input
-                                    }
-
-                                    if (sessionIdVal.isBlank()) {
-                                        importErrorMessage = "No valid sessionid found in input."
-                                        return@LinkerlyButton
-                                    }
-
-                                    cookieManager.setCookie(
-                                        "https://www.instagram.com",
-                                        "sessionid=$sessionIdVal; Domain=.instagram.com; Path=/; Secure; HttpOnly"
-                                    )
-                                    if (dsUserIdVal.isNotBlank()) {
-                                        cookieManager.setCookie(
-                                            "https://www.instagram.com",
-                                            "ds_user_id=$dsUserIdVal; Domain=.instagram.com; Path=/; Secure"
-                                        )
-                                    }
-                                    cookieManager.flush()
-                                    val user = if (dsUserIdVal.isNotBlank()) dsUserIdVal else "user"
-                                    val fullCookie = if (input.contains("sessionid=")) input else "sessionid=$sessionIdVal; ds_user_id=$dsUserIdVal"
-                                    onLoginSuccess(user, fullCookie)
-                                }
-                            ) {
-                                Text("Apply Session")
-                            }
                         }
                     }
                 }
@@ -459,40 +339,21 @@ fun InstagramLoginDialog(
                         )
                     }
 
-                    // Action buttons
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    // Action button
+                    LinkerlyButton(
+                        onClick = {
+                            val detected = checkAndNotifyCookies(CookieManager.getInstance())
+                            if (!detected) {
+                                statusMessage = "No active session detected yet. Please submit login."
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        LinkerlyTextButton(
-                            onClick = { showAdvancedImport = !showAdvancedImport },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = if (showAdvancedImport) "Hide Advanced" else "Paste Session Cookie",
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        LinkerlyOutlinedButton(
-                            onClick = {
-                                val detected = checkAndNotifyCookies(CookieManager.getInstance())
-                                if (!detected) {
-                                    statusMessage = "No active session detected yet. Please submit login."
-                                }
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "I'm Logged In",
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                        Text(
+                            text = "I'm Logged In",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }

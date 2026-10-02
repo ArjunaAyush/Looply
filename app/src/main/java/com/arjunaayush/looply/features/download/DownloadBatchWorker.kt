@@ -252,7 +252,7 @@ class DownloadBatchWorker(
         }
     }
 
-    private fun registerVideoInRepository(
+    private suspend fun registerVideoInRepository(
         repository: VideoRepository,
         file: File,
         reel: FeedReel
@@ -283,7 +283,12 @@ class DownloadBatchWorker(
                 height = height,
                 sizeBytes = file.length()
             )
-            repository.saveVideo(details)
+            repository.saveVideo(
+                details = details,
+                reelUrl = "https://www.instagram.com/reel/${reel.shortcode}/",
+                author = reel.creatorHandle,
+                caption = reel.title
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Error saving video to repository: ${e.message}")
         }

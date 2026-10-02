@@ -15,7 +15,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.arjunaayush.looply.core.network.InstagramFeedClient
 import com.arjunaayush.looply.core.preferences.PreferencesManager
-import com.arjunaayush.looply.data.model.Video
+import com.arjunaayush.looply.domain.model.Video
 import com.arjunaayush.looply.data.repository.VideoRepository
 import com.arjunaayush.looply.features.importvideo.VideoImport
 import kotlinx.coroutines.CancellationException
@@ -441,7 +441,7 @@ class InstagramDownloader(
     /**
      * Downloads video stream bytes into a cache file and imports into Looply storage & database.
      */
-    fun downloadAndSaveVideo(streamUrl: String, shortcode: String? = null): Video? {
+    suspend fun downloadAndSaveVideo(streamUrl: String, shortcode: String? = null): Video? {
         val cleanedUrl = cleanCdnVideoUrl(streamUrl)
         val tempFile = File(appContext.cacheDir, "temp_ig_${System.currentTimeMillis()}.mp4")
         var currentUrl = cleanedUrl

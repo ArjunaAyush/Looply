@@ -34,6 +34,12 @@ interface VideoDao {
     @Query("DELETE FROM videos WHERE is_watched = 1")
     suspend fun deleteWatchedVideos()
 
+    @Query("SELECT * FROM videos ORDER BY created_at DESC")
+    suspend fun getAllVideosSync(): List<VideoEntity>
+
+    @Query("DELETE FROM videos")
+    suspend fun deleteAllVideos()
+
     @Query("UPDATE videos SET is_favorite = NOT is_favorite WHERE id = :id")
     suspend fun toggleFavorite(id: String)
 

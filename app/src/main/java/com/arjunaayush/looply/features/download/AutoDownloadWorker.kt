@@ -162,7 +162,7 @@ class AutoDownloadWorker(
         }
     }
 
-    private fun cleanUpOldWatchedVideos(repository: VideoRepository) {
+    private suspend fun cleanUpOldWatchedVideos(repository: VideoRepository) {
         try {
             val oneDayAgo = System.currentTimeMillis() - (24 * 60 * 60 * 1000)
             val allVideos = repository.getAllVideos()
@@ -265,7 +265,7 @@ class AutoDownloadWorker(
         }
     }
 
-    private fun registerVideoInRepository(
+    private suspend fun registerVideoInRepository(
         repository: VideoRepository,
         file: File,
         reel: FeedReel
@@ -296,7 +296,12 @@ class AutoDownloadWorker(
                 height = height,
                 sizeBytes = file.length()
             )
-            repository.saveVideo(details)
+            repository.saveVideo(
+                details = details,
+                reelUrl = "https://www.instagram.com/reel/${reel.shortcode}/",
+                author = reel.creatorHandle,
+                caption = reel.title
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Error saving video in auto-download: ${e.message}")
         }
