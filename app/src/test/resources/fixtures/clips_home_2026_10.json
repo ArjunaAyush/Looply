@@ -1,0 +1,103 @@
+{
+  "items": [
+    {
+      "media": {
+        "pk": "301001",
+        "code": "C1001",
+        "video_duration": 15.2,
+        "caption": { "text": "Nature reel 1" },
+        "user": { "username": "creator1" },
+        "video_versions": [
+          { "url": "https://cdn.instagram.com/v/t50.2886-16/1001.mp4?oe=6700AABB", "width": 720, "height": 1280 }
+        ],
+        "image_versions2": {
+          "candidates": [{ "url": "https://cdn.instagram.com/v/t51.2885-15/1001.jpg" }]
+        }
+      }
+    },
+    {
+      "media_or_ad": {
+        "pk": "301002",
+        "code": "C1002",
+        "video_duration": 8.0,
+        "caption": { "text": "Nature reel 2" },
+        "user": { "username": "creator2" },
+        "video_versions": [
+          { "url": "https://cdn.instagram.com/v/t50.2886-16/1002.mp4?oe=6700AABC", "width": 1080, "height": 1920 }
+        ]
+      }
+    },
+    {
+      "clip": {
+        "media": {
+          "pk": "301003",
+          "code": "C1003",
+          "video_duration": 22.5,
+          "user": { "username": "creator3" },
+          "video_versions": [
+            { "url": "https://cdn.instagram.com/v/t50.2886-16/1003.mp4", "width": 720, "height": 1280 }
+          ]
+        }
+      }
+    },
+    {
+      "media": {
+        "pk": "301004",
+        "code": "C1004",
+        "video_duration": 12.0,
+        "user": { "username": "creator4" },
+        "video_versions": [
+          { "url": "https://cdn.instagram.com/v/t50.2886-16/1004.mp4", "width": 720, "height": 1280 }
+        ]
+      }
+    },
+    {
+      "media": {
+        "pk": "301005",
+        "code": "C1005",
+        "video_duration": 5.0,
+        "user": { "username": "creator5" },
+        "video_versions": [
+          { "url": "https://cdn.instagram.com/v/t50.2886-16/1005.mp4", "width": 720, "height": 1280 }
+        ]
+      }
+    },
+    {
+      "media": {
+        "pk": "301006",
+        "code": "C1006",
+        "video_duration": 30.0,
+        "user": { "username": "creator6" },
+        "video_versions": [
+          { "url": "https://cdn.instagram.com/v/t50.2886-16/1006.mp4", "width": 720, "height": 1280 }
+        ]
+      }
+    },
+    {
+      "media": {
+        "pk": "301007",
+        "code": "C1007",
+        "video_duration": 18.0,
+        "user": { "username": "creator7" },
+        "video_versions": [
+          { "url": "https://cdn.instagram.com/v/t50.2886-16/1007.mp4", "width": 720, "height": 1280 }
+        ]
+      }
+    },
+    {
+      "media": {
+        "pk": "301008",
+        "code": "C1008",
+        "video_duration": 14.5,
+        "user": { "username": "creator8" },
+        "video_versions": [
+          { "url": "https://cdn.instagram.com/v/t50.2886-16/1008.mp4", "width": 720, "height": 1280 }
+        ]
+      }
+    }
+  ],
+  "paging_info": {
+    "max_id": "PAGING_TOKEN_1008",
+    "more_available": true
+  }
+}

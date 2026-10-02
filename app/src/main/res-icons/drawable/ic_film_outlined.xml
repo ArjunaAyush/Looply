@@ -1,0 +1,45 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Outer Film Strip Frame -->
+    <path
+        android:pathData="M4.5,4 C3.67,4 3,4.67 3,5.5 V18.5 C3,19.33 3.67,20 4.5,20 H19.5 C20.33,20 21,19.33 21,18.5 V5.5 C21,4.67 20.33,4 19.5,4 Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Left Sprocket Track Line -->
+    <path
+        android:pathData="M7.5,4 V20"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"/>
+
+    <!-- Right Sprocket Track Line -->
+    <path
+        android:pathData="M16.5,4 V20"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"/>
+
+    <!-- Left Sprocket Holes -->
+    <path
+        android:pathData="M3,8 H7.5 M3,12 H7.5 M3,16 H7.5"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"/>
+
+    <!-- Right Sprocket Holes -->
+    <path
+        android:pathData="M16.5,8 H21 M16.5,12 H21 M16.5,16 H21"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"/>
+</vector>

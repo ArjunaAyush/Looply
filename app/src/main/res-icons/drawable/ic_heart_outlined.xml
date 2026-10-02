@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Heart Outline -->
+    <path
+        android:pathData="M12,20.1 C11.73,20.1 11.46,19.96 11.19,19.7 L5.92,14.43 C3.63,12.13 2.55,10.38 2.55,8.22 C2.55,5.25 4.71,3.22 7.54,3.22 C9.43,3.22 10.92,4.17 12,5.52 C13.08,4.17 14.57,3.22 16.46,3.22 C19.29,3.22 21.45,5.25 21.45,8.22 C21.45,10.38 20.37,12.13 18.07,14.43 L12.81,19.7 C12.54,19.96 12.27,20.1 12,20.1 Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+</vector>

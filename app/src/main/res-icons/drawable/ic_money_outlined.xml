@@ -1,0 +1,51 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Back Bill (overlapping top & right) -->
+    <path
+        android:pathData="M6,4 H19 C20.1,4 21,4.9 21,6 V14"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Front Bill Frame -->
+    <path
+        android:pathData="M4,7 H17 C18.1,7 19,7.9 19,9 V17 C19,18.1 18.1,19 17,19 H4 C2.9,19 2,18.1 2,17 V9 C2,7.9 2.9,7 4,7 Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Cash Dollar Sign: Vertical Line -->
+    <path
+        android:pathData="M10.5,9.5 V16.5"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Cash Dollar Sign: S-Curve -->
+    <path
+        android:pathData="M12.3,11.3 C12,10.7 11.3,10.4 10.5,10.4 C9.4,10.4 8.7,11 8.7,11.9 C8.7,12.9 9.6,13.3 10.5,13.6 C11.6,13.9 12.3,14.4 12.3,15.3 C12.3,16.3 11.5,16.8 10.5,16.8 C9.6,16.8 8.9,16.3 8.7,15.7"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Banknote Corner Notches -->
+    <path
+        android:pathData="M2,10.5 C3.5,10.5 4.5,9.5 4.5,7 M19,10.5 C17.5,10.5 16.5,9.5 16.5,7 M2,15.5 C3.5,15.5 4.5,16.5 4.5,19 M19,15.5 C17.5,15.5 16.5,16.5 16.5,19"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+</vector>

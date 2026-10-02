@@ -1,0 +1,31 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Outer Circle -->
+    <path
+        android:pathData="M12,21.45 C6.78,21.45 2.55,17.22 2.55,12 C2.55,6.78 6.78,2.55 12,2.55 C17.22,2.55 21.45,6.78 21.45,12 C21.45,17.22 17.22,21.45 12,21.45 Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Question Mark -->
+    <path
+        android:pathData="M9.57,8.89 C9.57,7.41 10.79,6.33 12.27,6.33 C13.89,6.33 14.97,7.41 14.97,8.76 C14.97,9.97 14.29,10.65 13.48,11.19 C12.68,11.73 12,12.27 12,14.03"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Dot -->
+    <path
+        android:pathData="M12,17.13 L12,17.13"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"/>
+</vector>

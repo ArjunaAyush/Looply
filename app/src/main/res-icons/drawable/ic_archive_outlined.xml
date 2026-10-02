@@ -1,0 +1,32 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Archive Box Lid -->
+    <path
+        android:pathData="M3.08,4.35 H20.92 C21.69,4.35 22.2,4.86 22.2,5.62 V7.54 C22.2,8.3 21.69,8.81 20.92,8.81 H3.08 C2.31,8.81 1.8,8.3 1.8,7.54 V5.62 C1.8,4.86 2.31,4.35 3.08,4.35 Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Archive Box Body -->
+    <path
+        android:pathData="M3.71,8.81 V17.74 C3.71,18.76 4.61,19.65 5.62,19.65 H18.38 C19.39,19.65 20.29,18.76 20.29,17.74 V8.81"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Front Handle/Slot -->
+    <path
+        android:pathData="M10.09,12.64 H13.91"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"/>
+</vector>

@@ -3,10 +3,16 @@ package com.arjunaayush.looply.features.storage
 import android.content.Context
 import android.net.Uri
 import com.arjunaayush.looply.utils.Constants
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.FileOutputStream
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class VideoStorageManager(private val context: Context) {
+@Singleton
+class VideoStorageManager @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
 
     private val videosDir: File by lazy {
         File(context.filesDir, Constants.VIDEOS_DIRECTORY_NAME).apply {
@@ -58,6 +64,13 @@ class VideoStorageManager(private val context: Context) {
         } ?: return emptyList()
 
         return files.sortedByDescending { it.lastModified() }
+    }
+
+    /**
+     * Calculates total bytes used by all saved videos.
+     */
+    fun getTotalStorageUsedBytes(): Long {
+        return getAllVideos().sumOf { it.length() }
     }
 
     /**

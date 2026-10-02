@@ -1,0 +1,41 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Gift Box Body -->
+    <path
+        android:pathData="M4.5,10.5 H19.5 V19.5 C19.5,20.33 18.83,21 18,21 H6 C5.17,21 4.5,20.33 4.5,19.5 Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Box Lid -->
+    <path
+        android:pathData="M3.5,7.5 C3.5,6.95 3.95,6.5 4.5,6.5 H19.5 C20.05,6.5 20.5,6.95 20.5,7.5 V10.5 H3.5 Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Vertical Ribbon -->
+    <path
+        android:pathData="M12,6.5 V21"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"/>
+
+    <!-- Ribbon Bow Top -->
+    <path
+        android:pathData="M12,6.5 C10.2,4 7.8,4.2 8.2,6 C8.6,7.4 11.2,6.6 12,6.5 C12.8,6.6 15.4,7.4 15.8,6 C16.2,4.2 13.8,4 12,6.5 Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+</vector>

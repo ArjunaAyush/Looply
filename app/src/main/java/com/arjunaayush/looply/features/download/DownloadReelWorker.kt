@@ -5,28 +5,30 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
-import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
+import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.arjunaayush.looply.MainActivity
-import com.arjunaayush.looply.R
 import com.arjunaayush.looply.data.repository.VideoRepository
 import com.arjunaayush.looply.features.importvideo.VideoImport
 import com.arjunaayush.looply.features.instagram.InstagramDownloader
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
  * Robust WorkManager CoroutineWorker for downloading Instagram Reels and direct videos.
- * Runs completely in the background on Dispatchers.IO, survives activity destruction,
- * updates notifications, prevents duplicate downloads, and keeps UI completely responsive.
+ * Runs completely in the background as a Foreground Service on Dispatchers.IO,
+ * survives activity destruction, updates notifications, prevents duplicate downloads,
+ * handles cancellation cooperatively, and keeps UI completely responsive.
  */
 class DownloadReelWorker(
     private val context: Context,
@@ -50,6 +52,7 @@ class DownloadReelWorker(
         fun enqueue(context: Context, url: String) {
             val shortcode = InstagramDownloader.extractShortcode(url)
             val uniqueWorkName = "download_reel_${shortcode ?: url.hashCode()}"
+            Log.d(TAG, "Enqueuing download for url: $url (workName: $uniqueWorkName)")
 
             val inputData = workDataOf(KEY_URL to url)
             val request = OneTimeWorkRequestBuilder<DownloadReelWorker>()
@@ -59,7 +62,7 @@ class DownloadReelWorker(
 
             WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
                 uniqueWorkName,
-                ExistingWorkPolicy.KEEP,
+                ExistingWorkPolicy.REPLACE,
                 request
             )
         }
@@ -70,11 +73,22 @@ class DownloadReelWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val url = inputData.getString(KEY_URL)
+        Log.d(TAG, "doWork started with URL: $url")
         if (url.isNullOrBlank()) {
+            Log.e(TAG, "Invalid download URL provided")
             return@withContext Result.failure(workDataOf(KEY_ERROR_MESSAGE to "Invalid download URL"))
         }
 
         createNotificationChannel()
+
+        // Promote to Foreground Service immediately to protect worker from background death
+        val initialNotif = buildProgressNotification("Connecting to Instagram... ⚡")
+        try {
+            setForeground(createForegroundInfo(initialNotif))
+            Log.d(TAG, "DownloadReelWorker promoted to Foreground Service")
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not set foreground service: ${e.message}")
+        }
 
         val repository = VideoRepository(context)
         val videoImport = VideoImport(context, repository.storageManager)
@@ -84,38 +98,38 @@ class DownloadReelWorker(
 
         // 1. Prevent duplicate download if already saved in database
         if (shortcode != null && repository.isVideoAlreadyDownloaded(shortcode)) {
+            Log.d(TAG, "Reel already downloaded: $shortcode")
             showSuccessNotification("Reel already saved in offline library! ❤️", "Reel • $shortcode.mp4")
             return@withContext Result.success(workDataOf(KEY_PROGRESS_MESSAGE to "Already downloaded"))
         }
 
-        // 2. Post initial download progress notification
-        showProgressNotification("Connecting to FastVideoSave... ⚡")
-
         try {
-            if (isStopped) return@withContext Result.failure()
+            if (isStopped) {
+                Log.d(TAG, "Worker stopped before downloading started")
+                return@withContext Result.failure()
+            }
 
             val savedVideo = if (downloader.run { InstagramDownloader.extractShortcode(url) } != null ||
                 url.contains("instagram.com") || url.contains("instagr.am")) {
                 downloader.downloadReelSuspend(url) { progressMsg ->
                     showProgressNotification(progressMsg)
-                    // Update worker progress for LiveData observers
                     setProgressAsync(workDataOf(KEY_PROGRESS_MESSAGE to progressMsg))
                 }
             } else {
-                // Direct video link (.mp4, .mov, etc.)
-                showProgressNotification("Downloading video file... ⚡")
+                showProgressNotification("Downloading video file...")
                 downloader.downloadAndSaveVideo(url)
             }
 
             if (isStopped) {
+                Log.d(TAG, "Worker stopped during/after download")
                 notificationManager.cancel(NOTIFICATION_ID)
                 return@withContext Result.failure()
             }
 
             if (savedVideo != null) {
-                showSuccessNotification("Reel Saved Offline ❤️", savedVideo.title, savedVideo.id)
+                Log.d(TAG, "Download succeeded: ${savedVideo.id} - ${savedVideo.title}")
+                showSuccessNotification("Reel Saved Offline", savedVideo.title, savedVideo.id)
 
-                // Send broadcast so active screens (Reels, Saved) update without user refresh
                 val broadcastIntent = Intent(ACTION_DOWNLOAD_COMPLETE).apply {
                     setPackage(context.packageName)
                     putExtra(KEY_VIDEO_ID, savedVideo.id)
@@ -124,13 +138,30 @@ class DownloadReelWorker(
 
                 Result.success(workDataOf(KEY_VIDEO_ID to savedVideo.id))
             } else {
+                Log.e(TAG, "Downloader returned null video for: $url")
                 showFailureNotification("Could not resolve or download reel.")
                 Result.failure(workDataOf(KEY_ERROR_MESSAGE to "Could not resolve video stream"))
             }
+        } catch (e: CancellationException) {
+            Log.d(TAG, "DownloadReelWorker was cancelled gracefully.")
+            notificationManager.cancel(NOTIFICATION_ID)
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Error in DownloadReelWorker: ${e.message}", e)
             showFailureNotification("Download failed: ${e.message}")
             Result.failure(workDataOf(KEY_ERROR_MESSAGE to (e.message ?: "Unknown error")))
+        }
+    }
+
+    private fun createForegroundInfo(notification: android.app.Notification): ForegroundInfo {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            ForegroundInfo(NOTIFICATION_ID, notification)
         }
     }
 
@@ -148,16 +179,30 @@ class DownloadReelWorker(
         }
     }
 
-    private fun showProgressNotification(message: String) {
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+    private fun buildProgressNotification(message: String): android.app.Notification {
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            NOTIFICATION_ID,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("Looply • Downloading Reel ⚡")
+            .setContentTitle("Looply • Downloading Reel")
             .setContentText(message)
             .setProgress(0, 0, true)
             .setOngoing(true)
+            .setContentIntent(pendingIntent)
             .setAutoCancel(false)
             .build()
+    }
 
+    private fun showProgressNotification(message: String) {
+        val notification = buildProgressNotification(message)
         try {
             notificationManager.notify(NOTIFICATION_ID, notification)
         } catch (_: Exception) {}
@@ -194,7 +239,7 @@ class DownloadReelWorker(
     private fun showFailureNotification(message: String) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_notify_error)
-            .setContentTitle("Looply • Download Failed")
+            .setContentTitle("Download Failed")
             .setContentText(message)
             .setAutoCancel(true)
             .build()
