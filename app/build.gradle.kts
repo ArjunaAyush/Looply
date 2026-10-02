@@ -38,6 +38,19 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("boolean", "FEED_INGESTION", "false")
+        }
+        create("direct") {
+            dimension = "distribution"
+            buildConfigField("boolean", "FEED_INGESTION", "true")
+        }
     }
 
     sourceSets {
@@ -55,6 +68,7 @@ composeCompiler {
 }
 
 dependencies {
+    implementation(libs.androidx.webkit)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
