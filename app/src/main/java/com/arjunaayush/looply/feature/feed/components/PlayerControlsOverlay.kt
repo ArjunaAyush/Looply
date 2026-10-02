@@ -43,6 +43,7 @@ fun PlayerControlsOverlay(
     onToggleFavorite: () -> Unit,
     onDelete: () -> Unit,
     onToggleMute: () -> Unit,
+    onOpenSort: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -61,25 +62,48 @@ fun PlayerControlsOverlay(
                 )
             )
     ) {
-        // Top Right Volume / Mute Button
-        LinkerlyIconButton(
-            onClick = {
-                haptics.playHaptic(HapticEffectType.TICK)
-                onToggleMute()
-            },
+        // Top Right Actions: Sort icon above, Mute icon below
+        Column(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .statusBarsPadding()
-                .padding(top = 8.dp, end = 16.dp)
-                .size(44.dp)
-                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                .padding(top = 8.dp, end = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            LinkerlyIcon(
-                imageVector = if (isMuted) LinkerlyIcons.Buttons.VolumeOff else LinkerlyIcons.Buttons.VolumeUp,
-                contentDescription = if (isMuted) "Unmute" else "Mute",
-                tint = if (isMuted) Color.White.copy(alpha = 0.7f) else LooplyPink,
-                size = 22.dp
-            )
+            LinkerlyIconButton(
+                onClick = {
+                    haptics.playHaptic(HapticEffectType.TICK)
+                    onOpenSort()
+                },
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+            ) {
+                LinkerlyIcon(
+                    imageVector = LinkerlyIcons.Sort,
+                    contentDescription = "Sort feed",
+                    tint = Color.White,
+                    size = 22.dp
+                )
+            }
+
+            LinkerlyIconButton(
+                onClick = {
+                    haptics.playHaptic(HapticEffectType.TICK)
+                    onToggleMute()
+                },
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+            ) {
+                LinkerlyIcon(
+                    imageVector = if (isMuted) LinkerlyIcons.Buttons.VolumeOff else LinkerlyIcons.Buttons.VolumeUp,
+                    contentDescription = if (isMuted) "Unmute" else "Mute",
+                    tint = if (isMuted) Color.White.copy(alpha = 0.7f) else LooplyPink,
+                    size = 22.dp
+                )
+            }
         }
 
         // Right Action Rail

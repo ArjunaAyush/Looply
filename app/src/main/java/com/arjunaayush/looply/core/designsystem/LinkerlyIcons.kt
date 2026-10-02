@@ -42,6 +42,9 @@ object LinkerlyIcons {
     val Tune: ImageVector
         @Composable
         get() = Buttons.Tune
+    val Sort: ImageVector
+        @Composable
+        get() = Buttons.Sort
     val DragHandle: ImageVector
         @Composable
         get() = ImageVector.vectorResource(id = R.drawable.ic_drag_handle)

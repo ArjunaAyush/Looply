@@ -4,7 +4,10 @@ import android.content.Context
 import android.media.AudioManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.arjunaayush.looply.domain.model.ReelSmartFilter
+import com.arjunaayush.looply.domain.model.ReelSortOrder
 import com.arjunaayush.looply.domain.model.Video
+import com.arjunaayush.looply.domain.model.applyFilterAndSort
 import com.arjunaayush.looply.domain.usecase.DeleteVideoUseCase
 import com.arjunaayush.looply.domain.usecase.GetSavedVideosUseCase
 import com.arjunaayush.looply.domain.usecase.ToggleFavoriteUseCase
@@ -22,7 +25,8 @@ data class FeedUiState(
     val videos: List<Video> = emptyList(),
     val isLooping: Boolean = true,
     val isMuted: Boolean = false,
-    val selectedIndex: Int = 0
+    val selectedIndex: Int = 0,
+    val sortOrder: ReelSortOrder = ReelSortOrder.RECENTLY_ADDED
 )
 
 @HiltViewModel
@@ -36,6 +40,7 @@ class ReelsViewModel @Inject constructor(
     private val isLooping = MutableStateFlow(true)
     private val isMuted = MutableStateFlow(isDeviceMutedByDefault(context))
     private val selectedIndex = MutableStateFlow(0)
+    private val sortOrder = MutableStateFlow(ReelSortOrder.RECENTLY_ADDED)
 
     companion object {
         fun isDeviceMutedByDefault(context: Context): Boolean {
@@ -51,14 +56,16 @@ class ReelsViewModel @Inject constructor(
         getSavedVideosUseCase(),
         isLooping,
         isMuted,
-        selectedIndex
-    ) { videos, looping, muted, index ->
-        val feedVideos = videos.reversed() // Oldest first, latest goes to the bottom of the feed
+        selectedIndex,
+        sortOrder
+    ) { videos, looping, muted, index, order ->
+        val feedVideos = videos.applyFilterAndSort(ReelSmartFilter.ALL, order)
         FeedUiState(
             videos = feedVideos,
             isLooping = looping,
             isMuted = muted,
-            selectedIndex = index.coerceIn(0, (feedVideos.size - 1).coerceAtLeast(0))
+            selectedIndex = index.coerceIn(0, (feedVideos.size - 1).coerceAtLeast(0)),
+            sortOrder = order
         )
     }.stateIn(
         scope = viewModelScope,
@@ -78,9 +85,22 @@ class ReelsViewModel @Inject constructor(
         selectedIndex.value = page
     }
 
+    fun setSortOrder(order: ReelSortOrder) {
+        sortOrder.value = order
+    }
+
     fun toggleFavorite(videoId: String) {
         viewModelScope.launch {
             toggleFavoriteUseCase(videoId)
+        }
+    }
+
+    fun likeVideo(videoId: String) {
+        viewModelScope.launch {
+            val video = uiState.value.videos.find { it.id == videoId }
+            if (video != null && !video.isFavorite) {
+                toggleFavoriteUseCase(videoId)
+            }
         }
     }
 

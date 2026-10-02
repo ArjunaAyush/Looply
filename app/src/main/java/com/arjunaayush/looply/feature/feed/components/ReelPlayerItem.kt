@@ -57,6 +57,8 @@ fun ReelPlayerItem(
     onToggleFavorite: () -> Unit,
     onDelete: () -> Unit,
     onToggleMute: () -> Unit = {},
+    onLike: () -> Unit = {},
+    onOpenSort: () -> Unit = {},
     modifier: Modifier = Modifier,
     isTabActive: Boolean = true
 ) {
@@ -138,7 +140,9 @@ fun ReelPlayerItem(
                     onDoubleTap = {
                         haptics.playHaptic(HapticEffectType.FAVORITE_POP)
                         showHeartAnimation = true
-                        onToggleFavorite()
+                        if (!video.isFavorite) {
+                            onLike()
+                        }
                     },
                     onTap = {
                         if (exoPlayer.isPlaying) {
@@ -174,7 +178,8 @@ fun ReelPlayerItem(
             isMuted = isMuted,
             onToggleFavorite = onToggleFavorite,
             onDelete = onDelete,
-            onToggleMute = onToggleMute
+            onToggleMute = onToggleMute,
+            onOpenSort = onOpenSort
         )
 
         // Heart burst micro-interaction on double-tap

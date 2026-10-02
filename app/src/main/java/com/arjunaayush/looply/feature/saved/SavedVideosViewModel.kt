@@ -3,7 +3,10 @@ package com.arjunaayush.looply.feature.saved
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.arjunaayush.looply.domain.model.CreatorGroup
+import com.arjunaayush.looply.domain.model.ReelSmartFilter
+import com.arjunaayush.looply.domain.model.ReelSortOrder
 import com.arjunaayush.looply.domain.model.Video
+import com.arjunaayush.looply.domain.model.applyFilterAndSort
 import com.arjunaayush.looply.domain.repository.VideoRepository
 import com.arjunaayush.looply.domain.usecase.ClearWatchedVideosUseCase
 import com.arjunaayush.looply.domain.usecase.DeleteVideoUseCase
@@ -22,7 +25,10 @@ import javax.inject.Inject
 data class SavedUiState(
     val creatorGroups: List<CreatorGroup> = emptyList(),
     val selectedCreator: String? = null,
+    val selectedFilter: ReelSmartFilter = ReelSmartFilter.ALL,
+    val selectedSort: ReelSortOrder = ReelSortOrder.RECENTLY_ADDED,
     val displayedVideos: List<Video> = emptyList(),
+    val totalSavedCount: Int = 0,
     val totalStorageBytes: Long = 0L
 ) {
     val storageUsageFormatted: String
@@ -47,23 +53,36 @@ class SavedVideosViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val selectedCreator = MutableStateFlow<String?>(null)
+    private val selectedFilter = MutableStateFlow(ReelSmartFilter.ALL)
+    private val selectedSort = MutableStateFlow(ReelSortOrder.RECENTLY_ADDED)
+
+    private val filterAndSortState = combine(
+        selectedCreator,
+        selectedFilter,
+        selectedSort
+    ) { creator, filter, sort ->
+        Triple(creator, filter, sort)
+    }
 
     val uiState: StateFlow<SavedUiState> = combine(
         getSavedVideosUseCase(),
         getVideosByCreatorUseCase(),
-        selectedCreator,
+        filterAndSortState,
         repository.getStorageUsageBytes()
-    ) { allVideos, creatorGroups, creator, storageBytes ->
-        val filtered = if (creator == null) {
-            allVideos
-        } else {
-            allVideos.filter { it.displayAuthor.equals(creator, ignoreCase = true) }
-        }
+    ) { allVideos, creatorGroups, (creator, filter, sort), storageBytes ->
+        val filtered = allVideos.applyFilterAndSort(
+            filter = filter,
+            sortOrder = sort,
+            creator = creator
+        )
 
         SavedUiState(
             creatorGroups = creatorGroups,
             selectedCreator = creator,
+            selectedFilter = filter,
+            selectedSort = sort,
             displayedVideos = filtered,
+            totalSavedCount = allVideos.size,
             totalStorageBytes = storageBytes
         )
     }.stateIn(
@@ -74,6 +93,14 @@ class SavedVideosViewModel @Inject constructor(
 
     fun selectCreator(creator: String?) {
         selectedCreator.value = if (selectedCreator.value == creator) null else creator
+    }
+
+    fun selectFilter(filter: ReelSmartFilter) {
+        selectedFilter.value = filter
+    }
+
+    fun selectSort(sort: ReelSortOrder) {
+        selectedSort.value = sort
     }
 
     fun deleteVideo(videoId: String) {
