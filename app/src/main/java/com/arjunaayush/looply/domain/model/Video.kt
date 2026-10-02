@@ -15,7 +15,8 @@ data class Video(
     val aspectRatio: Float = 0.5625f,
     val createdAt: Long = System.currentTimeMillis(),
     val isFavorite: Boolean = false,
-    val isWatched: Boolean = false
+    val isWatched: Boolean = false,
+    val watchCount: Int = 0
 ) {
     val displayAuthor: String
         get() = if (author.isNotBlank()) {

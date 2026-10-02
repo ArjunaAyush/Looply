@@ -43,9 +43,16 @@ import com.arjunaayush.looply.domain.model.Video
 import kotlinx.coroutines.delay
 import java.io.File
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import coil.compose.AsyncImage
+import kotlinx.coroutines.isActive
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -59,6 +66,9 @@ fun ReelPlayerItem(
     onToggleMute: () -> Unit = {},
     onLike: () -> Unit = {},
     onOpenSort: () -> Unit = {},
+    onRecordView: (String) -> Unit = {},
+    onProgressUpdate: (Float) -> Unit = {},
+    isAmbientMode: Boolean = true,
     modifier: Modifier = Modifier,
     isTabActive: Boolean = true
 ) {
@@ -67,6 +77,7 @@ fun ReelPlayerItem(
     val haptics = remember { HapticsManager(context) }
     var showHeartAnimation by remember { mutableStateOf(false) }
     var isUserPaused by remember { mutableStateOf(false) }
+    var hasRecordedView by remember(video.id) { mutableStateOf(false) }
 
     val exoPlayer = remember(video.id) {
         ExoPlayer.Builder(context).build().apply {
@@ -84,6 +95,8 @@ fun ReelPlayerItem(
     LaunchedEffect(isCurrentPage) {
         if (isCurrentPage) {
             isUserPaused = false
+        } else {
+            onProgressUpdate(0f)
         }
     }
 
@@ -93,6 +106,18 @@ fun ReelPlayerItem(
                 exoPlayer.seekTo(0)
             }
             exoPlayer.play()
+            while (isActive) {
+                val dur = exoPlayer.duration
+                val pos = exoPlayer.currentPosition
+                if (dur > 0L) {
+                    onProgressUpdate(pos.toFloat() / dur.toFloat())
+                }
+                if (!hasRecordedView && (pos >= 3000L || exoPlayer.playbackState == Player.STATE_ENDED)) {
+                    hasRecordedView = true
+                    onRecordView(video.id)
+                }
+                delay(100)
+            }
         } else {
             exoPlayer.pause()
         }
@@ -107,7 +132,21 @@ fun ReelPlayerItem(
     }
 
     DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int
+            ) {
+                if (!hasRecordedView) {
+                    hasRecordedView = true
+                    onRecordView(video.id)
+                }
+            }
+        }
+        exoPlayer.addListener(listener)
         onDispose {
+            exoPlayer.removeListener(listener)
             exoPlayer.release()
         }
     }
@@ -156,6 +195,24 @@ fun ReelPlayerItem(
                 )
             }
     ) {
+        // Ambient Mode: Blurred video backdrop softly filling letterbox black bars
+        if (isAmbientMode && video.thumbnailPath.isNotBlank() && File(video.thumbnailPath).exists()) {
+            AsyncImage(
+                model = File(video.thumbnailPath),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = 1.35f
+                        scaleY = 1.35f
+                        alpha = 0.45f
+                    }
+                    .blur(54.dp)
+            )
+        }
+
+        // Crisp native video surface
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
@@ -170,6 +227,24 @@ fun ReelPlayerItem(
             },
             modifier = Modifier.fillMaxSize()
         )
+
+        // Paused Logo Overlay
+        if (isUserPaused) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(68.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                LinkerlyIcon(
+                    imageVector = LinkerlyIcons.Buttons.PlayVideo,
+                    contentDescription = "Paused",
+                    tint = Color.White.copy(alpha = 0.9f),
+                    size = 40.dp
+                )
+            }
+        }
 
         // Persistent HUD controls (do not auto-hide)
         PlayerControlsOverlay(

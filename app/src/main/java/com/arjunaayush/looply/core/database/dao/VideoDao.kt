@@ -45,4 +45,7 @@ interface VideoDao {
 
     @Query("UPDATE videos SET is_watched = 1 WHERE id = :id")
     suspend fun markWatched(id: String)
+
+    @Query("UPDATE videos SET is_watched = 1, watch_count = watch_count + 1 WHERE id = :id")
+    suspend fun recordView(id: String)
 }

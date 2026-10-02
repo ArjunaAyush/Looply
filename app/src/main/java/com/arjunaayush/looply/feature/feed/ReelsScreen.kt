@@ -87,6 +87,9 @@ fun ReelsScreen(
                     onDelete = { viewModel.deleteVideo(video.id) },
                     onToggleMute = { viewModel.toggleMute() },
                     onOpenSort = { showSortSheet = true },
+                    onRecordView = { viewModel.recordVideoView(it) },
+                    onProgressUpdate = { viewModel.updatePlaybackProgress(it) },
+                    isAmbientMode = uiState.isAmbientModeEnabled,
                     isTabActive = isTabActive
                 )
             }

@@ -13,7 +13,7 @@ import com.arjunaayush.looply.core.database.entity.VideoEntity
 
 @Database(
     entities = [VideoEntity::class, PendingReelEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class VideoDatabase : RoomDatabase() {
@@ -49,6 +49,12 @@ abstract class VideoDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_TO_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE videos ADD COLUMN watch_count INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         @Volatile
         private var INSTANCE: VideoDatabase? = null
 
@@ -59,7 +65,7 @@ abstract class VideoDatabase : RoomDatabase() {
                     VideoDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_TO_2)
+                    .addMigrations(MIGRATION_1_TO_2, MIGRATION_2_TO_3)
                     // Non-destructive: DO NOT use fallbackToDestructiveMigration
                     .build()
                     .also { INSTANCE = it }

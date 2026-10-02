@@ -101,6 +101,10 @@ class VideoRepositoryImpl @Inject constructor(
         videoDao.markWatched(id)
     }
 
+    override suspend fun recordVideoView(id: String) = withContext(Dispatchers.IO) {
+        videoDao.recordView(id)
+    }
+
     override fun getStorageUsageBytes(): Flow<Long> {
         return videoDao.getAllVideos().map { entities ->
             entities.sumOf { it.sizeBytes }

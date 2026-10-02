@@ -17,13 +17,18 @@ import com.arjunaayush.looply.features.download.IngestionGuard
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 data class SettingsUiState(
     val isInstagramLoggedIn: Boolean = false,
@@ -34,6 +39,8 @@ data class SettingsUiState(
     val instantBatchSizeMb: Int = 200,
     val infiniteLoopDefault: Boolean = true,
     val hapticsEnabled: Boolean = true,
+    val ambientModeEnabled: Boolean = true,
+    val shakeToShuffleEnabled: Boolean = true,
     val isDownloadingBatch: Boolean = false,
     val batchDownloadProgress: String = "",
     val batchDownloadProgressFraction: Float = 0f,
@@ -69,6 +76,20 @@ class SettingsViewModel @Inject constructor(
 
     init {
         refreshBlockReason()
+
+        // Background username resolution if numeric ID was saved
+        if (preferencesManager.isInstagramLoggedIn.value) {
+            val user = preferencesManager.instagramUsername.value
+            if (user.isNotBlank() && user.all { it.isDigit() }) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    val cookies = preferencesManager.getInstagramCookies()
+                    val resolved = resolveInstagramUsername(user, cookies)
+                    if (!resolved.isNullOrBlank()) {
+                        preferencesManager.setInstagramUsername(resolved)
+                    }
+                }
+            }
+        }
 
         // Observe Batch Download Worker state & live progress
         viewModelScope.launch {
@@ -142,21 +163,27 @@ class SettingsViewModel @Inject constructor(
             preferencesManager.instantBatchSizeMb,
             preferencesManager.infiniteLoopDefault,
             preferencesManager.hapticsEnabled,
-            isDownloadingBatch,
-            batchDownloadProgress
+            preferencesManager.ambientModeEnabled,
+            preferencesManager.shakeToShuffleEnabled
         ) { p6, p7, p8, p9, p10 ->
             arrayOf<Any>(p6, p7, p8, p9, p10)
         },
         combine(
+            isDownloadingBatch,
+            batchDownloadProgress,
             batchDownloadProgressFraction,
             isAutoDownloading,
-            autoDownloadProgress,
+            autoDownloadProgress
+        ) { p11, p12, p13, p14, p15 ->
+            arrayOf<Any>(p11, p12, p13, p14, p15)
+        },
+        combine(
             autoDownloadProgressFraction,
             ingestionBlockReason
-        ) { p11, p12, p13, p14, p15 ->
-            arrayOf<Any?>(p11, p12, p13, p14, p15)
+        ) { p16, p17 ->
+            arrayOf<Any?>(p16, p17)
         }
-    ) { group1, group2, group3 ->
+    ) { group1, group2, group3, group4 ->
         SettingsUiState(
             isInstagramLoggedIn = group1[0] as Boolean,
             instagramUsername = group1[1] as String,
@@ -166,14 +193,16 @@ class SettingsViewModel @Inject constructor(
             instantBatchSizeMb = group2[0] as Int,
             infiniteLoopDefault = group2[1] as Boolean,
             hapticsEnabled = group2[2] as Boolean,
-            isDownloadingBatch = group2[3] as Boolean,
-            batchDownloadProgress = group2[4] as String,
-            batchDownloadProgressFraction = group3[0] as Float,
-            isAutoDownloading = group3[1] as Boolean,
-            autoDownloadProgress = group3[2] as String,
-            autoDownloadProgressFraction = group3[3] as Float,
+            ambientModeEnabled = group2[3] as Boolean,
+            shakeToShuffleEnabled = group2[4] as Boolean,
+            isDownloadingBatch = group3[0] as Boolean,
+            batchDownloadProgress = group3[1] as String,
+            batchDownloadProgressFraction = group3[2] as Float,
+            isAutoDownloading = group3[3] as Boolean,
+            autoDownloadProgress = group3[4] as String,
+            autoDownloadProgressFraction = group4[0] as Float,
             feedIngestionEnabled = BuildConfig.FEED_INGESTION,
-            ingestionBlockReason = group3[4] as? BlockReason
+            ingestionBlockReason = group4[1] as? BlockReason
         )
     }.stateIn(
         scope = viewModelScope,
@@ -205,6 +234,14 @@ class SettingsViewModel @Inject constructor(
         refreshBlockReason()
         if (preferencesManager.autoDownloadOnWifi.value) {
             AutoDownloadScheduler.schedule(context)
+        }
+        if (username.isBlank() || username.all { it.isDigit() }) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val resolved = resolveInstagramUsername(username, cookies)
+                if (!resolved.isNullOrBlank()) {
+                    preferencesManager.setInstagramUsername(resolved)
+                }
+            }
         }
     }
 
@@ -242,6 +279,93 @@ class SettingsViewModel @Inject constructor(
 
     fun setHapticsEnabled(enabled: Boolean) {
         preferencesManager.setHapticsEnabled(enabled)
+    }
+
+    fun setAmbientModeEnabled(enabled: Boolean) {
+        preferencesManager.setAmbientModeEnabled(enabled)
+    }
+
+    fun setShakeToShuffleEnabled(enabled: Boolean) {
+        preferencesManager.setShakeToShuffleEnabled(enabled)
+    }
+
+    private suspend fun resolveInstagramUsername(userId: String, cookies: String): String? = withContext(Dispatchers.IO) {
+        if (cookies.isBlank()) return@withContext null
+
+        // 1. Check if cookies contain ds_user
+        val cookieParts = cookies.split("; ")
+        for (part in cookieParts) {
+            if (part.startsWith("ds_user=") && !part.startsWith("ds_user_id=")) {
+                val u = part.substringAfter("ds_user=").trim()
+                if (u.isNotBlank() && !u.all { it.isDigit() }) {
+                    return@withContext u
+                }
+            }
+        }
+
+        // 2. Try Instagram Web REST API
+        try {
+            val url = URL("https://www.instagram.com/api/v1/users/$userId/info/")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+            conn.setRequestProperty("X-IG-App-ID", "936619743392459")
+            conn.setRequestProperty("Cookie", cookies)
+            conn.connectTimeout = 8000
+            conn.readTimeout = 8000
+            if (conn.responseCode == 200) {
+                val body = conn.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(body)
+                val userObj = json.optJSONObject("user")
+                val username = userObj?.optString("username")
+                if (!username.isNullOrBlank() && !username.all { it.isDigit() }) {
+                    return@withContext username
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 3. Try Mobile API endpoint
+        try {
+            val url = URL("https://i.instagram.com/api/v1/users/$userId/info/")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("User-Agent", "Instagram 278.0.0.19.115 Android")
+            conn.setRequestProperty("Cookie", cookies)
+            conn.connectTimeout = 8000
+            conn.readTimeout = 8000
+            if (conn.responseCode == 200) {
+                val body = conn.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(body)
+                val userObj = json.optJSONObject("user")
+                val username = userObj?.optString("username")
+                if (!username.isNullOrBlank() && !username.all { it.isDigit() }) {
+                    return@withContext username
+                }
+            }
+        } catch (_: Exception) {}
+
+        // 4. Try loading home page and extract username from HTML
+        try {
+            val url = URL("https://www.instagram.com/")
+            val conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+            conn.setRequestProperty("Cookie", cookies)
+            conn.connectTimeout = 8000
+            conn.readTimeout = 8000
+            if (conn.responseCode == 200) {
+                val html = conn.inputStream.bufferedReader().use { it.readText() }
+                val match = Regex("\"username\"\\s*:\\s*\"([a-zA-Z0-9._]{3,30})\"").findAll(html)
+                for (m in match) {
+                    val candidate = m.groupValues[1]
+                    if (candidate.lowercase() !in listOf("instagram", "facebook", "meta", "null", "undefined")) {
+                        return@withContext candidate
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
+        null
     }
 
     fun downloadBatchNow(sizeMb: Int) {

@@ -80,17 +80,71 @@ fun InstagramLoginDialog(
         if (allCookies.contains("sessionid")) {
             var detectedUser = ""
             val parts = allCookies.split("; ")
+
+            // 1. Look for actual username in cookies (e.g. ds_user=username)
             for (part in parts) {
-                if (part.startsWith("ds_user_id=")) {
-                    detectedUser = part.substringAfter("ds_user_id=").trim()
-                    break
+                if (part.startsWith("ds_user=") && !part.startsWith("ds_user_id=")) {
+                    val u = part.substringAfter("ds_user=").trim()
+                    if (u.isNotBlank() && !u.all { it.isDigit() }) {
+                        detectedUser = u
+                        break
+                    }
                 }
             }
+
+            // 2. Fall back to numeric ds_user_id if ds_user is absent
+            if (detectedUser.isBlank()) {
+                for (part in parts) {
+                    if (part.startsWith("ds_user_id=")) {
+                        detectedUser = part.substringAfter("ds_user_id=").trim()
+                        break
+                    }
+                }
+            }
+
             if (detectedUser.isBlank()) {
                 detectedUser = "user"
             }
-            statusMessage = "Authenticated as @$detectedUser"
-            onLoginSuccess(detectedUser, allCookies)
+
+            // 3. If still numeric, try extracting username from active WebView DOM
+            if (detectedUser.all { it.isDigit() } && webViewInstance != null) {
+                val js = """
+                    (function() {
+                        try {
+                            if (window._sharedData && window._sharedData.config && window._sharedData.config.viewer && window._sharedData.config.viewer.username) {
+                                return window._sharedData.config.viewer.username;
+                            }
+                            const profileLinks = document.querySelectorAll('a[href^="/"][role="link"], a[href^="/"]');
+                            for (let a of profileLinks) {
+                                const href = a.getAttribute('href') || '';
+                                const match = href.match(/^\/([a-zA-Z0-9._]+)\/?$/);
+                                if (match && match[1]) {
+                                    const name = match[1];
+                                    if (!['explore', 'reels', 'direct', 'stories', 'accounts', 'your_activity', 'settings', 'archive', 'legal'].includes(name.toLowerCase())) {
+                                        if (a.querySelector('img') || a.querySelector('svg[aria-label="Profile"]')) {
+                                            return name;
+                                        }
+                                    }
+                                }
+                            }
+                        } catch(e) {}
+                        return "";
+                    })()
+                """.trimIndent()
+                webViewInstance?.evaluateJavascript(js) { res ->
+                    val clean = res?.trim('"', ' ', '\'') ?: ""
+                    if (clean.isNotBlank() && clean != "null" && !clean.all { it.isDigit() }) {
+                        statusMessage = "Authenticated as @$clean"
+                        onLoginSuccess(clean, allCookies)
+                    } else {
+                        statusMessage = "Authenticated as @$detectedUser"
+                        onLoginSuccess(detectedUser, allCookies)
+                    }
+                }
+            } else {
+                statusMessage = "Authenticated as @$detectedUser"
+                onLoginSuccess(detectedUser, allCookies)
+            }
             return true
         }
         return false

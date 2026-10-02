@@ -31,7 +31,9 @@ data class VideoEntity(
     @ColumnInfo(name = "is_favorite")
     val isFavorite: Boolean = false,
     @ColumnInfo(name = "is_watched")
-    val isWatched: Boolean = false
+    val isWatched: Boolean = false,
+    @ColumnInfo(name = "watch_count")
+    val watchCount: Int = 0
 ) {
     fun toDomain(): Video = Video(
         id = id,
@@ -48,7 +50,8 @@ data class VideoEntity(
         aspectRatio = aspectRatio,
         createdAt = createdAt,
         isFavorite = isFavorite,
-        isWatched = isWatched
+        isWatched = isWatched,
+        watchCount = watchCount
     )
 
     companion object {
@@ -67,7 +70,8 @@ data class VideoEntity(
             aspectRatio = video.aspectRatio,
             createdAt = video.createdAt,
             isFavorite = video.isFavorite,
-            isWatched = video.isWatched
+            isWatched = video.isWatched,
+            watchCount = video.watchCount
         )
     }
 }

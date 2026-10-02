@@ -25,6 +25,8 @@ class PreferencesManager @Inject constructor(
         private const val KEY_INSTANT_BATCH_MB = "instant_batch_mb"
         private const val KEY_INFINITE_LOOP = "infinite_loop_default"
         private const val KEY_HAPTICS = "haptics_enabled"
+        private const val KEY_AMBIENT_MODE = "ambient_mode_enabled"
+        private const val KEY_SHAKE_TO_SHUFFLE = "shake_to_shuffle_enabled"
 
         val CACHE_LIMIT_OPTIONS = listOf(
             "300 MB",
@@ -60,6 +62,12 @@ class PreferencesManager @Inject constructor(
     private val _hapticsEnabled = MutableStateFlow(prefs.getBoolean(KEY_HAPTICS, true))
     val hapticsEnabled: StateFlow<Boolean> = _hapticsEnabled.asStateFlow()
 
+    private val _ambientModeEnabled = MutableStateFlow(prefs.getBoolean(KEY_AMBIENT_MODE, true))
+    val ambientModeEnabled: StateFlow<Boolean> = _ambientModeEnabled.asStateFlow()
+
+    private val _shakeToShuffleEnabled = MutableStateFlow(prefs.getBoolean(KEY_SHAKE_TO_SHUFFLE, true))
+    val shakeToShuffleEnabled: StateFlow<Boolean> = _shakeToShuffleEnabled.asStateFlow()
+
     fun setInstagramLogin(loggedIn: Boolean, username: String, cookies: String = "") {
         val editor = prefs.edit()
             .putBoolean(KEY_INSTAGRAM_LOGGED_IN, loggedIn)
@@ -71,6 +79,11 @@ class PreferencesManager @Inject constructor(
         }
         editor.apply()
         _isInstagramLoggedIn.value = loggedIn
+        _instagramUsername.value = username
+    }
+
+    fun setInstagramUsername(username: String) {
+        prefs.edit().putString(KEY_INSTAGRAM_USERNAME, username).apply()
         _instagramUsername.value = username
     }
 
@@ -120,5 +133,15 @@ class PreferencesManager @Inject constructor(
     fun setHapticsEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_HAPTICS, enabled).apply()
         _hapticsEnabled.value = enabled
+    }
+
+    fun setAmbientModeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AMBIENT_MODE, enabled).apply()
+        _ambientModeEnabled.value = enabled
+    }
+
+    fun setShakeToShuffleEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SHAKE_TO_SHUFFLE, enabled).apply()
+        _shakeToShuffleEnabled.value = enabled
     }
 }

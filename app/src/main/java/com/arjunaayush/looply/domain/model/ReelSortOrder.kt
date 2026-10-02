@@ -39,10 +39,10 @@ fun List<Video>.applyFilterAndSort(
         ReelSortOrder.RECENTLY_ADDED -> result.sortedByDescending { it.createdAt }
         ReelSortOrder.OLDEST -> result.sortedBy { it.createdAt }
         ReelSortOrder.LEAST_VIEWED -> result.sortedWith(
-            compareBy<Video> { it.isWatched }.thenByDescending { it.createdAt }
+            compareBy<Video> { it.watchCount }.thenByDescending { it.createdAt }
         )
         ReelSortOrder.MOST_VIEWED -> result.sortedWith(
-            compareByDescending<Video> { it.isWatched }.thenByDescending { it.createdAt }
+            compareByDescending<Video> { it.watchCount }.thenByDescending { it.createdAt }
         )
         ReelSortOrder.SIZE_DESC -> result.sortedByDescending { it.sizeBytes }
         ReelSortOrder.SIZE_ASC -> result.sortedBy { it.sizeBytes }

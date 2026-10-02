@@ -106,11 +106,11 @@ fun PlayerControlsOverlay(
             }
         }
 
-        // Right Action Rail
+        // Right Action Rail (moved 10px up)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 72.dp),
+                .padding(end = 16.dp, bottom = 82.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {

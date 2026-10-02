@@ -15,5 +15,6 @@ interface VideoRepository {
     suspend fun deleteWatchedVideos()
     suspend fun toggleFavorite(id: String)
     suspend fun markWatched(id: String)
+    suspend fun recordVideoView(id: String)
     fun getStorageUsageBytes(): Flow<Long>
 }

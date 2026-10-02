@@ -494,6 +494,48 @@ fun SettingsScreen(
                         onCheckedChange = { viewModel.setHapticsEnabled(it) }
                     )
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Dynamic Ambient Glow", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Softly glows letterbox margins to match video colors",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    LinkerlySwitch(
+                        checked = uiState.ambientModeEnabled,
+                        onCheckedChange = { viewModel.setAmbientModeEnabled(it) }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Shake to Shuffle", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Shake device while browsing to jump to a random loop",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    LinkerlySwitch(
+                        checked = uiState.shakeToShuffleEnabled,
+                        onCheckedChange = { viewModel.setShakeToShuffleEnabled(it) }
+                    )
+                }
             }
         }
 

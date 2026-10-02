@@ -13,10 +13,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import com.arjunaayush.looply.core.designsystem.LinkerlyCard
 import com.arjunaayush.looply.core.designsystem.LinkerlyIcon
 import com.arjunaayush.looply.core.designsystem.LinkerlyIcons
 import com.arjunaayush.looply.core.designsystem.LinkerlyOutlinedButton
+import com.arjunaayush.looply.core.util.HapticEffectType
+import com.arjunaayush.looply.core.util.HapticsManager
 
 @Composable
 fun StorageUsageHeader(
@@ -24,6 +28,9 @@ fun StorageUsageHeader(
     onClearWatched: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val hapticsManager = remember { HapticsManager(context) }
+
     LinkerlyCard(
         modifier = modifier
             .fillMaxWidth()
@@ -50,7 +57,10 @@ fun StorageUsageHeader(
             }
 
             LinkerlyOutlinedButton(
-                onClick = onClearWatched
+                onClick = {
+                    hapticsManager.playHaptic(HapticEffectType.HEAVY_DELETE)
+                    onClearWatched()
+                }
             ) {
                 LinkerlyIcon(
                     imageVector = LinkerlyIcons.Buttons.Delete,
