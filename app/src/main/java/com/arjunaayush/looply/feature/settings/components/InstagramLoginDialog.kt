@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -138,27 +139,41 @@ fun InstagramLoginDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .height(56.dp)
+                        .padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.Center
+                    ) {
                         Text(
                             text = "Connect Instagram",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = if (useDesktopMode) "Desktop Web Engine" else "Mobile Web Engine",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         if (canGoBack) {
-                            LinkerlyIconButton(onClick = { webViewInstance?.goBack() }) {
+                            LinkerlyIconButton(
+                                onClick = { webViewInstance?.goBack() },
+                                modifier = Modifier.size(36.dp)
+                            ) {
                                 LinkerlyIcon(
                                     imageVector = LinkerlyIcons.ArrowBack,
                                     contentDescription = "Back",
@@ -166,36 +181,45 @@ fun InstagramLoginDialog(
                                 )
                             }
                         }
-                        LinkerlyIconButton(onClick = {
-                            webViewInstance?.let { webView ->
-                                useDesktopMode = !useDesktopMode
-                                webView.settings.userAgentString =
-                                    if (useDesktopMode) DESKTOP_USER_AGENT else MOBILE_USER_AGENT
-                                webView.reload()
-                                statusMessage = "Switching browser engine..."
-                            }
-                        }) {
+                        LinkerlyIconButton(
+                            onClick = {
+                                webViewInstance?.let { webView ->
+                                    useDesktopMode = !useDesktopMode
+                                    webView.settings.userAgentString =
+                                        if (useDesktopMode) DESKTOP_USER_AGENT else MOBILE_USER_AGENT
+                                    webView.reload()
+                                    statusMessage = "Switching browser engine..."
+                                }
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
                             LinkerlyIcon(
                                 imageVector = LinkerlyIcons.Tune,
                                 contentDescription = "Toggle Engine",
                                 size = 18.dp
                             )
                         }
-                        LinkerlyIconButton(onClick = {
-                            webViewInstance?.reload()
-                            statusMessage = "Refreshing page..."
-                        }) {
+                        LinkerlyIconButton(
+                            onClick = {
+                                webViewInstance?.reload()
+                                statusMessage = "Refreshing page..."
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
                             LinkerlyIcon(
                                 imageVector = LinkerlyIcons.Buttons.Refresh,
                                 contentDescription = "Refresh",
                                 size = 18.dp
                             )
                         }
-                        LinkerlyIconButton(onClick = onDismiss) {
+                        LinkerlyIconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(36.dp)
+                        ) {
                             LinkerlyIcon(
                                 imageVector = LinkerlyIcons.Close,
                                 contentDescription = "Close",
-                                size = 20.dp
+                                size = 18.dp
                             )
                         }
                     }
@@ -405,37 +429,68 @@ fun InstagramLoginDialog(
                 }
 
                 // Bottom Action Bar
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    LinkerlyTextButton(onClick = { showAdvancedImport = !showAdvancedImport }) {
-                        Text(
-                            text = if (showAdvancedImport) "Hide Advanced" else "Paste Session Cookie",
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Status text and subtle spinner
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (isPageLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(12.dp),
+                                strokeWidth = 1.5.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                         Text(
                             text = statusMessage,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+
+                    // Action buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        LinkerlyTextButton(
+                            onClick = { showAdvancedImport = !showAdvancedImport },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = if (showAdvancedImport) "Hide Advanced" else "Paste Session Cookie",
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
                         LinkerlyOutlinedButton(
                             onClick = {
                                 val detected = checkAndNotifyCookies(CookieManager.getInstance())
                                 if (!detected) {
                                     statusMessage = "No active session detected yet. Please submit login."
                                 }
-                            }
+                            },
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Text("I'm Logged In")
+                            Text(
+                                text = "I'm Logged In",
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
