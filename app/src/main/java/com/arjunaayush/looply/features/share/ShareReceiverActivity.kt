@@ -50,12 +50,12 @@ class ShareReceiverActivity : AppCompatActivity() {
             }
 
             if (shareIntentHandler.isInstagramUrl(url)) {
-                Toast.makeText(applicationContext, "Looply: Downloading reel in background... ⚡", Toast.LENGTH_SHORT).show()
+                Toast.makeText(applicationContext, "Looply: Downloading reel in background...", Toast.LENGTH_SHORT).show()
                 DownloadReelWorker.enqueue(applicationContext, url)
                 finishAndRemoveTask()
                 return
             } else if (url.endsWith(".mp4") || url.endsWith(".mov") || url.endsWith(".webm") || url.contains("video")) {
-                Toast.makeText(applicationContext, "Looply: Downloading video in background... ⚡", Toast.LENGTH_SHORT).show()
+                Toast.makeText(applicationContext, "Looply: Downloading video in background...", Toast.LENGTH_SHORT).show()
                 DownloadReelWorker.enqueue(applicationContext, url)
                 finishAndRemoveTask()
                 return

@@ -1,0 +1,33 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Briefcase Body -->
+    <path
+        android:pathData="M4.57,5.92 H19.43 C20.51,5.92 21.45,6.87 21.45,7.95 V18.75 C21.45,19.83 20.51,20.77 19.43,20.77 H4.57 C3.49,20.77 2.55,19.83 2.55,18.75 V7.95 C2.55,6.87 3.49,5.92 4.57,5.92 Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Handle -->
+    <path
+        android:pathData="M15.38,5.92 V3.9 C15.38,2.82 14.43,1.88 13.35,1.88 H10.65 C9.57,1.88 8.62,2.82 8.62,3.9 V5.92"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Middle Divider and Latch -->
+    <path
+        android:pathData="M2.55,12.68 H9.3 M14.7,12.68 H21.45 M9.3,10.65 H14.7 V14.7 H9.3 Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+</vector>

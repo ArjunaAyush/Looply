@@ -9,14 +9,12 @@ import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
-import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.arjunaayush.looply.MainActivity
-import com.arjunaayush.looply.R
 import com.arjunaayush.looply.data.repository.VideoRepository
 import com.arjunaayush.looply.features.importvideo.VideoImport
 import com.arjunaayush.looply.features.instagram.InstagramDownloader
@@ -103,7 +101,7 @@ class DownloadReelWorker(
                 }
             } else {
                 // Direct video link (.mp4, .mov, etc.)
-                showProgressNotification("Downloading video file... ⚡")
+                showProgressNotification("Downloading video file...")
                 downloader.downloadAndSaveVideo(url)
             }
 
@@ -113,7 +111,7 @@ class DownloadReelWorker(
             }
 
             if (savedVideo != null) {
-                showSuccessNotification("Reel Saved Offline ❤️", savedVideo.title, savedVideo.id)
+                showSuccessNotification("Reel Saved Offline", savedVideo.title, savedVideo.id)
 
                 // Send broadcast so active screens (Reels, Saved) update without user refresh
                 val broadcastIntent = Intent(ACTION_DOWNLOAD_COMPLETE).apply {
@@ -151,7 +149,7 @@ class DownloadReelWorker(
     private fun showProgressNotification(message: String) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("Looply • Downloading Reel ⚡")
+            .setContentTitle("Looply • Downloading Reel")
             .setContentText(message)
             .setProgress(0, 0, true)
             .setOngoing(true)

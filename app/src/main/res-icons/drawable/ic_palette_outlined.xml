@@ -1,0 +1,41 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Palette -->
+    <path
+        android:pathData="M12,2.55 C6.73,2.55 2.55,6.6 2.55,11.73 C2.55,16.86 6.46,20.77 11.46,20.77 C12.94,20.77 13.89,19.83 13.89,18.61 C13.89,17.8 13.48,17.13 12.81,16.46 C12.27,16.05 12,15.51 12,14.83 C12,13.62 12.94,12.68 14.29,12.68 H15.51 C20.24,12.68 21.45,10.11 21.45,7.82 C21.45,4.57 17.67,2.55 12,2.55 Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Paint Wells -->
+    <path
+        android:pathData="M7.68,8.22 L7.68,8.22"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round"/>
+
+    <path
+        android:pathData="M12,6.6 L12,6.6"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round"/>
+
+    <path
+        android:pathData="M16.18,9.3 L16.18,9.3"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round"/>
+
+    <path
+        android:pathData="M9.97,11.46 L9.97,11.46"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round"/>
+
+</vector>

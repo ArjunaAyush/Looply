@@ -1,0 +1,38 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Wallet Body -->
+    <path
+        android:pathData="M20.77,10.65 V6.6 C20.77,5.52 19.83,4.57 18.75,4.57 H4.57 C3.49,4.57 2.55,5.52 2.55,6.6 V17.4 C2.55,18.48 3.49,19.43 4.57,19.43 H18.75 C19.83,19.43 20.77,18.48 20.77,17.4"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Front Slot Line -->
+    <path
+        android:pathData="M2.55,9.3 H20.77"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Wallet Clasp -->
+    <path
+        android:pathData="M16.05,11.32 H20.77 C21.59,11.32 22.12,11.87 22.12,12.68 V15.38 C22.12,16.18 21.59,16.73 20.77,16.73 H16.05 C14.57,16.73 13.35,15.51 13.35,14.03 C13.35,12.54 14.57,11.32 16.05,11.32 Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"/>
+
+    <!-- Clasp Button -->
+    <path
+        android:pathData="M18.07,13.35 A0.68,0.68 0 1,0 18.07,14.7 A0.68,0.68 0 1,0 18.07,13.35 Z"
+        android:fillColor="#FFFFFF"/>
+</vector>
