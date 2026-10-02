@@ -93,6 +93,13 @@ fun ReelsScreen(
                     onOpenSort = { showSortSheet = true },
                     onRecordView = { viewModel.recordVideoView(it) },
                     onProgressUpdate = { viewModel.updatePlaybackProgress(it) },
+                    onVideoEnded = {
+                        if (page < uiState.videos.size - 1) {
+                            scope.launch {
+                                pagerState.animateScrollToPage(page + 1)
+                            }
+                        }
+                    },
                     isAmbientMode = uiState.isAmbientModeEnabled,
                     isTabActive = isTabActive
                 )

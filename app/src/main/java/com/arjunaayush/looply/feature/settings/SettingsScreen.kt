@@ -3,6 +3,7 @@ package com.arjunaayush.looply.feature.settings
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -39,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +54,7 @@ import androidx.compose.ui.window.Dialog
 import com.arjunaayush.looply.core.designsystem.LinkerlyButton
 import com.arjunaayush.looply.core.designsystem.LinkerlyCategorizedCard
 import com.arjunaayush.looply.core.designsystem.LinkerlyIcon
+import com.arjunaayush.looply.core.designsystem.LinkerlyIconButton
 import com.arjunaayush.looply.core.designsystem.LinkerlyIcons
 import com.arjunaayush.looply.core.designsystem.LinkerlyOutlinedButton
 import com.arjunaayush.looply.core.designsystem.LinkerlySwitch
@@ -415,7 +419,28 @@ fun SettingsScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    LinkerlyOutlinedButton(
+                        onClick = {
+                            viewModel.clearWatchedVideos()
+                            Toast.makeText(context, "Cleared watched reels", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        LinkerlyIcon(
+                            imageVector = LinkerlyIcons.Buttons.Delete,
+                            contentDescription = null,
+                            size = 18.dp
+                        )
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Text(
+                            text = "Clear Watched Reels Now",
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     LinkerlyOutlinedButton(
                         onClick = { showDeleteAllDialog = true },
@@ -566,9 +591,10 @@ fun SettingsScreen(
         if (BuildConfig.DEBUG && uiState.feedIngestionEnabled) {
             val debugLogs by viewModel.debugLogs.collectAsState()
             val listState = rememberLazyListState()
+            var isConsoleExpanded by remember { mutableStateOf(false) }
 
-            LaunchedEffect(debugLogs.size) {
-                if (debugLogs.isNotEmpty()) {
+            LaunchedEffect(debugLogs.size, isConsoleExpanded) {
+                if (isConsoleExpanded && debugLogs.isNotEmpty()) {
                     listState.animateScrollToItem(debugLogs.size - 1)
                 }
             }
@@ -576,106 +602,149 @@ fun SettingsScreen(
             LinkerlyCategorizedCard(title = "Debug Tools") {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isConsoleExpanded = !isConsoleExpanded }
+                            .padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Live Ingestion Console",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        if (debugLogs.isNotEmpty()) {
-                            TextButton(
-                                onClick = { viewModel.clearDebugLogs() },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "Clear",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 120.dp, max = 220.dp),
-                        color = Color(0xFF0C0C10),
-                        shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, Color(0xFF22222C))
-                    ) {
-                        if (debugLogs.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(20.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "No background activity logged yet.\nTap 'Download Reels Now' to watch live parallel ingestion.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        } else {
-                            LazyColumn(
-                                state = listState,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(3.dp)
-                            ) {
-                                items(debugLogs) { logLine ->
-                                    val lineColor = when {
-                                        "Saved" in logLine || "complete" in logLine -> Color(0xFF81C784)
-                                        "Found fresh" in logLine || "Redirected" in logLine -> Color(0xFFFF80AB)
-                                        "Downloading" in logLine || "Worker" in logLine -> Color(0xFFB0BEC5)
-                                        "error" in logLine || "Failed" in logLine || "Aborting" in logLine -> Color(0xFFE57373)
-                                        "duplicate" in logLine || "Skipping" in logLine -> Color(0xFFFFD54F)
-                                        else -> Color(0xFFE0E0E0)
-                                    }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Live Ingestion Console",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            if (debugLogs.isNotEmpty()) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = LooplyPink.copy(alpha = 0.15f)
+                                ) {
                                     Text(
-                                        text = logLine,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                                        fontFamily = FontFamily.Monospace,
-                                        color = lineColor
+                                        text = "${debugLogs.size}",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = LooplyPink,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                                     )
                                 }
                             }
                         }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (isConsoleExpanded && debugLogs.isNotEmpty()) {
+                                TextButton(
+                                    onClick = { viewModel.clearDebugLogs() },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "Clear",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            LinkerlyIconButton(
+                                onClick = { isConsoleExpanded = !isConsoleExpanded }
+                            ) {
+                                LinkerlyIcon(
+                                    imageVector = LinkerlyIcons.ChevronRight,
+                                    contentDescription = if (isConsoleExpanded) "Collapse Console" else "Expand Console",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.graphicsLayer {
+                                        rotationZ = if (isConsoleExpanded) 90f else 0f
+                                    },
+                                    size = 20.dp
+                                )
+                            }
+                        }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    if (isConsoleExpanded) {
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                    LinkerlyOutlinedButton(
-                        onClick = {
-                            val file = viewModel.getLatestDebugCaptureFile()
-                            if (file != null && file.exists()) {
-                                val uri = FileProvider.getUriForFile(
-                                    context,
-                                    "${context.packageName}.fileprovider",
-                                    file
-                                )
-                                val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "application/json"
-                                    putExtra(Intent.EXTRA_STREAM, uri)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 120.dp, max = 220.dp),
+                            color = Color(0xFF0C0C10),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFF22222C))
+                        ) {
+                            if (debugLogs.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(20.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "No background activity logged yet.\nTap 'Download Reels Now' to watch live parallel ingestion.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                        textAlign = TextAlign.Center
+                                    )
                                 }
-                                context.startActivity(Intent.createChooser(sendIntent, "Export Capture Dump"))
                             } else {
-                                Toast.makeText(context, "No capture dump available yet", Toast.LENGTH_SHORT).show()
+                                LazyColumn(
+                                    state = listState,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    items(debugLogs) { logLine ->
+                                        val lineColor = when {
+                                            "Saved" in logLine || "complete" in logLine -> Color(0xFF81C784)
+                                            "Found fresh" in logLine || "Redirected" in logLine -> Color(0xFFFF80AB)
+                                            "Downloading" in logLine || "Worker" in logLine -> Color(0xFFB0BEC5)
+                                            "error" in logLine || "Failed" in logLine || "Aborting" in logLine -> Color(0xFFE57373)
+                                            "duplicate" in logLine || "Skipping" in logLine -> Color(0xFFFFD54F)
+                                            else -> Color(0xFFE0E0E0)
+                                        }
+                                        Text(
+                                            text = logLine,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                            fontFamily = FontFamily.Monospace,
+                                            color = lineColor
+                                        )
+                                    }
+                                }
                             }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Export Last Capture Dump")
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        LinkerlyOutlinedButton(
+                            onClick = {
+                                val file = viewModel.getLatestDebugCaptureFile()
+                                if (file != null && file.exists()) {
+                                    val uri = FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        file
+                                    )
+                                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "application/json"
+                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(Intent.createChooser(sendIntent, "Export Capture Dump"))
+                                } else {
+                                    Toast.makeText(context, "No capture dump available yet", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Export Last Capture Dump")
+                        }
                     }
                 }
             }

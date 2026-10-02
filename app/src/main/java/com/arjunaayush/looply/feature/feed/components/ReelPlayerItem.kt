@@ -7,18 +7,28 @@ import androidx.annotation.OptIn
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,6 +39,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -50,6 +61,7 @@ import com.arjunaayush.looply.core.util.HapticsManager
 import com.arjunaayush.looply.domain.model.Video
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.io.File
 
 @OptIn(UnstableApi::class)
@@ -67,15 +79,18 @@ fun ReelPlayerItem(
     onOpenSort: () -> Unit = {},
     onRecordView: (String) -> Unit = {},
     onProgressUpdate: (Float) -> Unit = {},
+    onVideoEnded: () -> Unit = {},
     isAmbientMode: Boolean = true,
     modifier: Modifier = Modifier,
     isTabActive: Boolean = true
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val coroutineScope = rememberCoroutineScope()
     val haptics = remember { HapticsManager(context) }
     var showHeartAnimation by remember { mutableStateOf(false) }
     var isUserPaused by remember { mutableStateOf(false) }
+    var isFastForwarding by remember { mutableStateOf(false) }
     var hasRecordedView by remember(video.id) { mutableStateOf(false) }
 
     val thumbnailFile = remember(video.thumbnailPath) {
@@ -152,6 +167,12 @@ fun ReelPlayerItem(
                     onRecordView(video.id)
                 }
             }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED && !isLooping) {
+                    onVideoEnded()
+                }
+            }
         }
         exoPlayer.addListener(listener)
         onDispose {
@@ -199,6 +220,22 @@ fun ReelPlayerItem(
                         } else {
                             exoPlayer.play()
                             isUserPaused = false
+                        }
+                    },
+                    onPress = {
+                        var is2x = false
+                        val job = coroutineScope.launch {
+                            delay(350)
+                            is2x = true
+                            isFastForwarding = true
+                            exoPlayer.setPlaybackSpeed(2.0f)
+                            haptics.playHaptic(HapticEffectType.SEEK_TICK)
+                        }
+                        tryAwaitRelease()
+                        job.cancel()
+                        if (is2x) {
+                            isFastForwarding = false
+                            exoPlayer.setPlaybackSpeed(1.0f)
                         }
                     }
                 )
@@ -269,6 +306,39 @@ fun ReelPlayerItem(
                     tint = Color.White.copy(alpha = 0.9f),
                     size = 40.dp
                 )
+            }
+        }
+
+        // 2X Speed indicator pill when user holds down
+        if (isFastForwarding) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color.Black.copy(alpha = 0.8f),
+                border = BorderStroke(1.dp, LooplyPink.copy(alpha = 0.6f)),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    LinkerlyIcon(
+                        imageVector = LinkerlyIcons.Buttons.PlayVideo,
+                        contentDescription = null,
+                        tint = LooplyPink,
+                        size = 14.dp
+                    )
+                    Text(
+                        text = "2X Speed",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    )
+                }
             }
         }
 

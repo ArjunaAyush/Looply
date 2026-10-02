@@ -9,6 +9,7 @@ import com.arjunaayush.looply.BuildConfig
 import com.arjunaayush.looply.core.network.instagram.config.IngestionConfigRepository
 import com.arjunaayush.looply.core.preferences.PreferencesManager
 import com.arjunaayush.looply.core.util.IngestionLogger
+import com.arjunaayush.looply.domain.usecase.ClearWatchedVideosUseCase
 import com.arjunaayush.looply.domain.usecase.DeleteAllVideosUseCase
 import com.arjunaayush.looply.features.download.AutoDownloadScheduler
 import com.arjunaayush.looply.features.download.AutoDownloadWorker
@@ -61,6 +62,7 @@ class SettingsViewModel @Inject constructor(
     private val ingestionGuard: IngestionGuard,
     private val ingestionConfigRepository: IngestionConfigRepository,
     private val deleteAllVideosUseCase: DeleteAllVideosUseCase,
+    private val clearWatchedVideosUseCase: ClearWatchedVideosUseCase,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -398,6 +400,12 @@ class SettingsViewModel @Inject constructor(
     fun deleteAllVideos() {
         viewModelScope.launch {
             deleteAllVideosUseCase()
+        }
+    }
+
+    fun clearWatchedVideos() {
+        viewModelScope.launch {
+            clearWatchedVideosUseCase()
         }
     }
 }

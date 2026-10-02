@@ -1,7 +1,9 @@
 package com.arjunaayush.looply.feature.saved
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.arjunaayush.looply.core.util.MediaExportUtils
 import com.arjunaayush.looply.domain.model.CreatorGroup
 import com.arjunaayush.looply.domain.model.ReelSmartFilter
 import com.arjunaayush.looply.domain.model.ReelSortOrder
@@ -21,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 
 data class SavedUiState(
@@ -30,7 +33,9 @@ data class SavedUiState(
     val selectedSort: ReelSortOrder = ReelSortOrder.RECENTLY_ADDED,
     val displayedVideos: List<Video> = emptyList(),
     val totalSavedCount: Int = 0,
-    val totalStorageBytes: Long = 0L
+    val totalStorageBytes: Long = 0L,
+    val selectedVideoIds: Set<String> = emptySet(),
+    val isSelectionMode: Boolean = false
 ) {
     val storageUsageFormatted: String
         get() {
@@ -57,6 +62,8 @@ class SavedVideosViewModel @Inject constructor(
     private val selectedCreator = MutableStateFlow<String?>(null)
     private val selectedFilter = MutableStateFlow(ReelSmartFilter.ALL)
     private val selectedSort = MutableStateFlow(ReelSortOrder.RECENTLY_ADDED)
+    private val selectedVideoIds = MutableStateFlow<Set<String>>(emptySet())
+    private val isSelectionMode = MutableStateFlow(false)
 
     private val filterAndSortState = combine(
         selectedCreator,
@@ -66,12 +73,20 @@ class SavedVideosViewModel @Inject constructor(
         Triple(creator, filter, sort)
     }
 
+    private val selectionState = combine(
+        selectedVideoIds,
+        isSelectionMode
+    ) { ids, mode ->
+        Pair(ids, mode)
+    }
+
     val uiState: StateFlow<SavedUiState> = combine(
         getSavedVideosUseCase(),
         getVideosByCreatorUseCase(),
         filterAndSortState,
-        repository.getStorageUsageBytes()
-    ) { allVideos, creatorGroups, (creator, filter, sort), storageBytes ->
+        repository.getStorageUsageBytes(),
+        selectionState
+    ) { allVideos, creatorGroups, (creator, filter, sort), storageBytes, (selectedIds, selectionMode) ->
         val filtered = allVideos.applyFilterAndSort(
             filter = filter,
             sortOrder = sort,
@@ -85,7 +100,9 @@ class SavedVideosViewModel @Inject constructor(
             selectedSort = sort,
             displayedVideos = filtered,
             totalSavedCount = allVideos.size,
-            totalStorageBytes = storageBytes
+            totalStorageBytes = storageBytes,
+            selectedVideoIds = selectedIds,
+            isSelectionMode = selectionMode
         )
     }.stateIn(
         scope = viewModelScope,
@@ -103,6 +120,61 @@ class SavedVideosViewModel @Inject constructor(
 
     fun selectSort(sort: ReelSortOrder) {
         selectedSort.value = sort
+    }
+
+    fun toggleVideoSelection(videoId: String) {
+        val current = selectedVideoIds.value.toMutableSet()
+        if (current.contains(videoId)) {
+            current.remove(videoId)
+        } else {
+            current.add(videoId)
+        }
+        selectedVideoIds.value = current
+        isSelectionMode.value = current.isNotEmpty()
+    }
+
+    fun startSelection(videoId: String) {
+        isSelectionMode.value = true
+        selectedVideoIds.value = setOf(videoId)
+    }
+
+    fun selectAll() {
+        isSelectionMode.value = true
+        selectedVideoIds.value = uiState.value.displayedVideos.map { it.id }.toSet()
+    }
+
+    fun clearSelection() {
+        isSelectionMode.value = false
+        selectedVideoIds.value = emptySet()
+    }
+
+    fun deleteSelectedVideos() {
+        val idsToDelete = selectedVideoIds.value.toList()
+        viewModelScope.launch {
+            idsToDelete.forEach { id ->
+                deleteVideoUseCase(id)
+            }
+            clearSelection()
+        }
+    }
+
+    fun exportSelectedVideos(context: Context): Int {
+        val idsToExport = selectedVideoIds.value
+        val videosToExport = uiState.value.displayedVideos.filter { it.id in idsToExport }
+        var count = 0
+        videosToExport.forEach { video ->
+            val file = File(video.filePath)
+            if (file.exists()) {
+                val success = MediaExportUtils.exportVideoToDevice(
+                    context = context,
+                    sourceFile = file,
+                    title = video.title.ifBlank { "Reel_${video.id}" }
+                )
+                if (success) count++
+            }
+        }
+        clearSelection()
+        return count
     }
 
     fun deleteVideo(videoId: String) {

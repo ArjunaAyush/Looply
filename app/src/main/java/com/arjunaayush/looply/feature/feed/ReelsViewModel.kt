@@ -44,12 +44,20 @@ class ReelsViewModel @Inject constructor(
     private val preferencesManager: PreferencesManager
 ) : ViewModel() {
 
-    private val isLooping = MutableStateFlow(true)
+    private val isLooping = MutableStateFlow(preferencesManager.infiniteLoopDefault.value)
     private val isMuted = MutableStateFlow(isDeviceMutedByDefault(context))
     private val selectedIndex = MutableStateFlow(0)
     private val sortOrder = MutableStateFlow(ReelSortOrder.RECENTLY_ADDED)
     private val _playbackProgress = MutableStateFlow(0f)
     val playbackProgress: StateFlow<Float> = _playbackProgress.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            preferencesManager.infiniteLoopDefault.collect {
+                isLooping.value = it
+            }
+        }
+    }
 
     val ambientModeEnabled: StateFlow<Boolean> = preferencesManager.ambientModeEnabled
     val shakeToShuffleEnabled: StateFlow<Boolean> = preferencesManager.shakeToShuffleEnabled

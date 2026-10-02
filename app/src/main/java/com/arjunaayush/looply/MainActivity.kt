@@ -1,5 +1,6 @@
 package com.arjunaayush.looply
 
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.hardware.SensorManager
@@ -148,6 +149,24 @@ fun MainAppScaffold(
         MainTab.SETTINGS -> "Settings"
     }
 
+    val handleDirectDownloadFromClipboard: () -> Unit = {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        val clipData = clipboard?.primaryClip
+        val clipText = if (clipData != null && clipData.itemCount > 0) {
+            clipData.getItemAt(0)?.text?.toString()?.trim().orEmpty()
+        } else ""
+
+        if (clipText.contains("instagram.com", ignoreCase = true) || clipText.contains("instagr.am", ignoreCase = true)) {
+            hapticsManager.playHaptic(HapticEffectType.CONFIRM)
+            DownloadReelWorker.enqueue(context, clipText)
+            Toast.makeText(context, "Downloading copied reel...", Toast.LENGTH_SHORT).show()
+        } else {
+            hapticsManager.playHaptic(HapticEffectType.TICK)
+            val msg = if (clipText.isBlank()) "Clipboard is empty" else "No Instagram link found on clipboard"
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        }
+    }
+
     Scaffold(
         topBar = {
             if (currentTab != MainTab.FEED) {
@@ -160,10 +179,10 @@ fun MainAppScaffold(
                     },
                     actions = {
                         if (currentTab == MainTab.SAVED) {
-                            LinkerlyIconButton(onClick = { showImportDialog = true }) {
+                            LinkerlyIconButton(onClick = handleDirectDownloadFromClipboard) {
                                 LinkerlyIcon(
                                     imageVector = LinkerlyIcons.Buttons.Paste,
-                                    contentDescription = "Paste Reel Link",
+                                    contentDescription = "Download Copied Reel",
                                     size = 20.dp
                                 )
                             }
@@ -191,7 +210,7 @@ fun MainAppScaffold(
                 when (currentTab) {
                     MainTab.FEED -> ReelsScreen(
                         viewModel = reelsViewModel,
-                        onImportClick = { showImportDialog = true },
+                        onImportClick = handleDirectDownloadFromClipboard,
                         isTabActive = currentTab == MainTab.FEED
                     )
                     MainTab.SAVED -> SavedVideosScreen(
@@ -203,7 +222,7 @@ fun MainAppScaffold(
                             }
                             currentTab = MainTab.FEED
                         },
-                        onImportClick = { showImportDialog = true }
+                        onImportClick = handleDirectDownloadFromClipboard
                     )
                     MainTab.SETTINGS -> SettingsScreen(
                         viewModel = settingsViewModel

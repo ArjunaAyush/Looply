@@ -86,7 +86,7 @@ fun FeedEmptyState(
                         size = 18.dp
                     )
                     Spacer(modifier = Modifier.size(8.dp))
-                    Text("Paste Reel Link")
+                    Text("Download Copied Link")
                 }
             }
         }

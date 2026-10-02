@@ -22,7 +22,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.window.Dialog
+import com.arjunaayush.looply.core.designsystem.LinkerlyButton
+import com.arjunaayush.looply.core.designsystem.LinkerlyIcon
+import com.arjunaayush.looply.core.designsystem.LinkerlyIconButton
+import com.arjunaayush.looply.core.designsystem.LinkerlyIcons
+import com.arjunaayush.looply.core.designsystem.LinkerlyTextButton
 import com.arjunaayush.looply.core.designsystem.ReelSortBottomSheet
+import com.arjunaayush.looply.core.designsystem.theme.LooplyPink
 import com.arjunaayush.looply.domain.model.ReelSmartFilter
 import com.arjunaayush.looply.feature.feed.components.FeedEmptyState
 import com.arjunaayush.looply.feature.saved.components.CreatorFilterRow
@@ -38,31 +54,118 @@ fun SavedVideosScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
     var showSortSheet by remember { mutableStateOf(false) }
+    var showDeleteSelectedDialog by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxSize()) {
         if (uiState.totalSavedCount > 0) {
-            StorageUsageHeader(
-                storageFormatted = uiState.storageUsageFormatted,
-                onClearWatched = { viewModel.clearWatchedVideos() },
-                onDeleteAll = { viewModel.deleteAllVideos() }
-            )
+            if (uiState.isSelectionMode) {
+                // Bulk Selection Action Bar
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 4.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            LinkerlyIconButton(onClick = { viewModel.clearSelection() }) {
+                                LinkerlyIcon(
+                                    imageVector = LinkerlyIcons.Close,
+                                    contentDescription = "Cancel selection",
+                                    size = 20.dp
+                                )
+                            }
+                            Text(
+                                text = "${uiState.selectedVideoIds.size} Selected",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
 
-            // Smart Filters (All, Liked, Unwatched, Watched) + Sort trigger
-            SmartFilterAndSortRow(
-                selectedFilter = uiState.selectedFilter,
-                onSelectFilter = { viewModel.selectFilter(it) },
-                selectedSort = uiState.selectedSort,
-                onOpenSortSheet = { showSortSheet = true }
-            )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            LinkerlyTextButton(
+                                onClick = {
+                                    if (uiState.selectedVideoIds.size == uiState.displayedVideos.size) {
+                                        viewModel.clearSelection()
+                                    } else {
+                                        viewModel.selectAll()
+                                    }
+                                }
+                            ) {
+                                Text(
+                                    text = if (uiState.selectedVideoIds.size == uiState.displayedVideos.size) "Deselect All" else "Select All",
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
 
-            // Creator grouping chips
-            if (uiState.creatorGroups.isNotEmpty()) {
-                CreatorFilterRow(
-                    creatorGroups = uiState.creatorGroups,
-                    selectedCreator = uiState.selectedCreator,
-                    onSelectCreator = { viewModel.selectCreator(it) }
+                            LinkerlyIconButton(
+                                onClick = {
+                                    if (uiState.selectedVideoIds.isNotEmpty()) {
+                                        val count = viewModel.exportSelectedVideos(context)
+                                        Toast.makeText(context, "Saved $count reels to Gallery", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                enabled = uiState.selectedVideoIds.isNotEmpty()
+                            ) {
+                                LinkerlyIcon(
+                                    imageVector = LinkerlyIcons.Buttons.Download,
+                                    contentDescription = "Export to Gallery",
+                                    tint = if (uiState.selectedVideoIds.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                    size = 20.dp
+                                )
+                            }
+
+                            LinkerlyIconButton(
+                                onClick = { showDeleteSelectedDialog = true },
+                                enabled = uiState.selectedVideoIds.isNotEmpty()
+                            ) {
+                                LinkerlyIcon(
+                                    imageVector = LinkerlyIcons.Buttons.Delete,
+                                    contentDescription = "Delete selected",
+                                    tint = if (uiState.selectedVideoIds.isNotEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                    size = 20.dp
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                StorageUsageHeader(
+                    storageFormatted = uiState.storageUsageFormatted,
+                    onClearWatched = { viewModel.clearWatchedVideos() },
+                    onDeleteAll = { viewModel.deleteAllVideos() }
                 )
+
+                // Smart Filters (All, Liked, Unwatched, Watched) + Sort trigger
+                SmartFilterAndSortRow(
+                    selectedFilter = uiState.selectedFilter,
+                    onSelectFilter = { viewModel.selectFilter(it) },
+                    selectedSort = uiState.selectedSort,
+                    onOpenSortSheet = { showSortSheet = true }
+                )
+
+                // Creator grouping chips
+                if (uiState.creatorGroups.isNotEmpty()) {
+                    CreatorFilterRow(
+                        creatorGroups = uiState.creatorGroups,
+                        selectedCreator = uiState.selectedCreator,
+                        onSelectCreator = { viewModel.selectCreator(it) }
+                    )
+                }
             }
 
             if (uiState.displayedVideos.isNotEmpty()) {
@@ -79,7 +182,18 @@ fun SavedVideosScreen(
                     ) { video ->
                         VideoGridCard(
                             video = video,
-                            onClick = { onVideoClick(video.id) },
+                            onClick = {
+                                if (uiState.isSelectionMode) {
+                                    viewModel.toggleVideoSelection(video.id)
+                                } else {
+                                    onVideoClick(video.id)
+                                }
+                            },
+                            onLongClick = {
+                                viewModel.startSelection(video.id)
+                            },
+                            isSelected = video.id in uiState.selectedVideoIds,
+                            isSelectionMode = uiState.isSelectionMode,
                             onDelete = { viewModel.deleteVideo(video.id) }
                         )
                     }
@@ -118,5 +232,58 @@ fun SavedVideosScreen(
             onSelectSort = { viewModel.selectSort(it) },
             onDismiss = { showSortSheet = false }
         )
+    }
+
+    if (showDeleteSelectedDialog) {
+        Dialog(onDismissRequest = { showDeleteSelectedDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Delete ${uiState.selectedVideoIds.size} Selected Reels?",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "This will permanently remove the selected videos from your device.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        LinkerlyTextButton(onClick = { showDeleteSelectedDialog = false }) {
+                            Text("Cancel")
+                        }
+                        Spacer(modifier = Modifier.size(8.dp))
+                        LinkerlyButton(
+                            onClick = {
+                                showDeleteSelectedDialog = false
+                                viewModel.deleteSelectedVideos()
+                                Toast.makeText(context, "Deleted selected reels", Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            LinkerlyIcon(
+                                imageVector = LinkerlyIcons.Buttons.Delete,
+                                contentDescription = null,
+                                size = 16.dp
+                            )
+                            Spacer(modifier = Modifier.size(6.dp))
+                            Text("Delete")
+                        }
+                    }
+                }
+            }
+        }
     }
 }
