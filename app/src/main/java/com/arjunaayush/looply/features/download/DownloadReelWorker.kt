@@ -87,7 +87,7 @@ class DownloadReelWorker(
         }
 
         // 2. Post initial download progress notification
-        showProgressNotification("Connecting to FastVideoSave... ⚡")
+        showProgressNotification("Connecting to Instagram... ⚡")
 
         try {
             if (isStopped) return@withContext Result.failure()
