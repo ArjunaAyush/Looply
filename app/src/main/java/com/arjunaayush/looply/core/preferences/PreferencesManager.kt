@@ -18,6 +18,7 @@ class PreferencesManager @Inject constructor(
     companion object {
         private const val KEY_INSTAGRAM_LOGGED_IN = "ig_logged_in"
         private const val KEY_INSTAGRAM_USERNAME = "ig_username"
+        private const val KEY_INSTAGRAM_COOKIES = "ig_cookies"
         private const val KEY_AUTO_DOWNLOAD_WIFI = "auto_download_wifi"
         private const val KEY_CACHE_LIMIT_INDEX = "cache_limit_index"
         private const val KEY_AUTO_DELETE_24H = "auto_delete_24h"
@@ -59,13 +60,22 @@ class PreferencesManager @Inject constructor(
     private val _hapticsEnabled = MutableStateFlow(prefs.getBoolean(KEY_HAPTICS, true))
     val hapticsEnabled: StateFlow<Boolean> = _hapticsEnabled.asStateFlow()
 
-    fun setInstagramLogin(loggedIn: Boolean, username: String) {
-        prefs.edit()
+    fun setInstagramLogin(loggedIn: Boolean, username: String, cookies: String = "") {
+        val editor = prefs.edit()
             .putBoolean(KEY_INSTAGRAM_LOGGED_IN, loggedIn)
             .putString(KEY_INSTAGRAM_USERNAME, username)
-            .apply()
+        if (cookies.isNotBlank()) {
+            editor.putString(KEY_INSTAGRAM_COOKIES, cookies)
+        } else if (!loggedIn) {
+            editor.remove(KEY_INSTAGRAM_COOKIES)
+        }
+        editor.apply()
         _isInstagramLoggedIn.value = loggedIn
         _instagramUsername.value = username
+    }
+
+    fun getInstagramCookies(): String {
+        return prefs.getString(KEY_INSTAGRAM_COOKIES, "") ?: ""
     }
 
     fun setAutoDownloadOnWifi(enabled: Boolean) {

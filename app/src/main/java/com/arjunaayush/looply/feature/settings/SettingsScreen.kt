@@ -403,8 +403,8 @@ fun SettingsScreen(
 
     if (showLoginDialog) {
         InstagramLoginDialog(
-            onLoginSuccess = { username ->
-                viewModel.onInstagramLoginSuccess(username)
+            onLoginSuccess = { username, cookies ->
+                viewModel.onInstagramLoginSuccess(username, cookies)
                 showLoginDialog = false
             },
             onDismiss = { showLoginDialog = false }

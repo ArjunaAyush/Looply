@@ -152,8 +152,8 @@ class SettingsViewModel @Inject constructor(
         initialValue = SettingsUiState()
     )
 
-    fun onInstagramLoginSuccess(username: String) {
-        preferencesManager.setInstagramLogin(true, username)
+    fun onInstagramLoginSuccess(username: String, cookies: String = "") {
+        preferencesManager.setInstagramLogin(true, username, cookies)
         if (preferencesManager.autoDownloadOnWifi.value) {
             AutoDownloadScheduler.schedule(context)
         }

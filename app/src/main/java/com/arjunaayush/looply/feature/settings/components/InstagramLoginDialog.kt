@@ -65,7 +65,7 @@ private const val MOBILE_USER_AGENT =
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun InstagramLoginDialog(
-    onLoginSuccess: (username: String) -> Unit,
+    onLoginSuccess: (username: String, cookies: String) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -99,7 +99,7 @@ fun InstagramLoginDialog(
                 detectedUser = "user"
             }
             statusMessage = "Authenticated as @$detectedUser"
-            onLoginSuccess(detectedUser)
+            onLoginSuccess(detectedUser, allCookies)
             return true
         }
         return false
@@ -326,7 +326,8 @@ fun InstagramLoginDialog(
                                     }
                                     cookieManager.flush()
                                     val user = if (dsUserIdVal.isNotBlank()) dsUserIdVal else "user"
-                                    onLoginSuccess(user)
+                                    val fullCookie = if (input.contains("sessionid=")) input else "sessionid=$sessionIdVal; ds_user_id=$dsUserIdVal"
+                                    onLoginSuccess(user, fullCookie)
                                 }
                             ) {
                                 Text("Apply Session")
