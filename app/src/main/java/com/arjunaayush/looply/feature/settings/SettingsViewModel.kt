@@ -5,19 +5,24 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import com.arjunaayush.looply.BuildConfig
+import com.arjunaayush.looply.core.network.instagram.config.IngestionConfigRepository
 import com.arjunaayush.looply.core.preferences.PreferencesManager
 import com.arjunaayush.looply.features.download.AutoDownloadScheduler
 import com.arjunaayush.looply.features.download.AutoDownloadWorker
+import com.arjunaayush.looply.features.download.BlockReason
 import com.arjunaayush.looply.features.download.DownloadBatchWorker
+import com.arjunaayush.looply.features.download.IngestionGuard
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 data class SettingsUiState(
     val isInstagramLoggedIn: Boolean = false,
@@ -33,7 +38,9 @@ data class SettingsUiState(
     val batchDownloadProgressFraction: Float = 0f,
     val isAutoDownloading: Boolean = false,
     val autoDownloadProgress: String = "",
-    val autoDownloadProgressFraction: Float = 0f
+    val autoDownloadProgressFraction: Float = 0f,
+    val feedIngestionEnabled: Boolean = BuildConfig.FEED_INGESTION,
+    val ingestionBlockReason: BlockReason? = null
 ) {
     val selectedCacheLimitText: String
         get() = PreferencesManager.CACHE_LIMIT_OPTIONS.getOrElse(cacheLimitIndex) { "500 MB" }
@@ -42,6 +49,8 @@ data class SettingsUiState(
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val preferencesManager: PreferencesManager,
+    private val ingestionGuard: IngestionGuard,
+    private val ingestionConfigRepository: IngestionConfigRepository,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -55,7 +64,11 @@ class SettingsViewModel @Inject constructor(
     private val autoDownloadProgress = MutableStateFlow("")
     private val autoDownloadProgressFraction = MutableStateFlow(0f)
 
+    private val ingestionBlockReason = MutableStateFlow<BlockReason?>(null)
+
     init {
+        refreshBlockReason()
+
         // Observe Batch Download Worker state & live progress
         viewModelScope.launch {
             workManager.getWorkInfosForUniqueWorkFlow(DownloadBatchWorker.UNIQUE_WORK_NAME)
@@ -76,14 +89,16 @@ class SettingsViewModel @Inject constructor(
                             batchDownloadProgress.value = if (savedCount > 0) "Finished: Saved $savedCount loops ($downloadedMb MB)" else "Finished"
                             batchDownloadProgressFraction.value = 1f
                             isDownloadingBatch.value = false
+                            refreshBlockReason()
                         } else if (info.state == WorkInfo.State.CANCELLED) {
                             batchDownloadProgress.value = "Downloads stopped"
                             batchDownloadProgressFraction.value = 0f
                             isDownloadingBatch.value = false
                         } else if (info.state == WorkInfo.State.FAILED) {
-                            batchDownloadProgress.value = "Batch download finished or no new reels found"
+                            batchDownloadProgress.value = "Batch download finished or stopped"
                             batchDownloadProgressFraction.value = 0f
                             isDownloadingBatch.value = false
+                            refreshBlockReason()
                         }
                     }
                 }
@@ -129,9 +144,10 @@ class SettingsViewModel @Inject constructor(
             batchDownloadProgressFraction,
             isAutoDownloading,
             autoDownloadProgress,
-            autoDownloadProgressFraction
-        ) { p11, p12, p13, p14 ->
-            arrayOf<Any>(p11, p12, p13, p14)
+            autoDownloadProgressFraction,
+            ingestionBlockReason
+        ) { p11, p12, p13, p14, p15 ->
+            arrayOf<Any?>(p11, p12, p13, p14, p15)
         }
     ) { group1, group2, group3 ->
         SettingsUiState(
@@ -148,7 +164,9 @@ class SettingsViewModel @Inject constructor(
             batchDownloadProgressFraction = group3[0] as Float,
             isAutoDownloading = group3[1] as Boolean,
             autoDownloadProgress = group3[2] as String,
-            autoDownloadProgressFraction = group3[3] as Float
+            autoDownloadProgressFraction = group3[3] as Float,
+            feedIngestionEnabled = BuildConfig.FEED_INGESTION,
+            ingestionBlockReason = group3[4] as? BlockReason
         )
     }.stateIn(
         scope = viewModelScope,
@@ -156,8 +174,28 @@ class SettingsViewModel @Inject constructor(
         initialValue = SettingsUiState()
     )
 
+    fun refreshBlockReason() {
+        viewModelScope.launch {
+            val config = ingestionConfigRepository.current()
+            ingestionBlockReason.value = ingestionGuard.blockReason(config)
+        }
+    }
+
+    fun clearVerificationBlock() {
+        ingestionGuard.clearUserActionFlags()
+        refreshBlockReason()
+    }
+
+    fun getLatestDebugCaptureFile(): File? {
+        val debugDir = File(context.filesDir, "debug/captures")
+        if (!debugDir.exists()) return null
+        return debugDir.listFiles()?.maxByOrNull { it.lastModified() }
+    }
+
     fun onInstagramLoginSuccess(username: String, cookies: String = "") {
         preferencesManager.setInstagramLogin(true, username, cookies)
+        ingestionGuard.clearUserActionFlags()
+        refreshBlockReason()
         if (preferencesManager.autoDownloadOnWifi.value) {
             AutoDownloadScheduler.schedule(context)
         }
@@ -167,6 +205,7 @@ class SettingsViewModel @Inject constructor(
         preferencesManager.setInstagramLogin(false, "")
         preferencesManager.setAutoDownloadOnWifi(false)
         AutoDownloadScheduler.cancel(context)
+        refreshBlockReason()
     }
 
     fun setAutoDownloadOnWifi(enabled: Boolean) {
@@ -201,7 +240,7 @@ class SettingsViewModel @Inject constructor(
     fun downloadBatchNow(sizeMb: Int) {
         if (!uiState.value.isInstagramLoggedIn) return
         isDownloadingBatch.value = true
-        batchDownloadProgress.value = "Enqueuing batch download for $sizeMb MB..."
+        batchDownloadProgress.value = "Enqueuing batch download..."
         batchDownloadProgressFraction.value = 0f
         DownloadBatchWorker.enqueue(context, sizeMb)
     }
