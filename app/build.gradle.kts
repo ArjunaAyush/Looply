@@ -94,6 +94,7 @@ dependencies {
 
     // Coil & Jsoup
     implementation(libs.coil.compose)
+    implementation(libs.coil.video)
     implementation(libs.jsoup)
 
     // Coroutines

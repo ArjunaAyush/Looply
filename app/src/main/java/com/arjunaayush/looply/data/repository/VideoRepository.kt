@@ -61,17 +61,49 @@ class VideoRepository(
     /**
      * Saves imported video details into Room and returns the domain Video.
      */
+    /**
+     * Generates a JPEG thumbnail file for the given video file if it does not already exist.
+     */
+    fun generateThumbnail(file: File, id: String): String {
+        return try {
+            val thumbDir = File(context.filesDir, "thumbnails").apply { if (!exists()) mkdirs() }
+            val thumbFile = File(thumbDir, "${id}.jpg")
+            if (thumbFile.exists() && thumbFile.length() > 0) {
+                return thumbFile.absolutePath
+            }
+            val success = com.arjunaayush.looply.utils.ThumbnailLoader.extractAndSaveThumbnail(file, thumbFile)
+            if (success && thumbFile.exists() && thumbFile.length() > 0) {
+                thumbFile.absolutePath
+            } else {
+                ""
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Thumbnail generation failed for ${file.name}: ${e.message}")
+            ""
+        }
+    }
+
+    /**
+     * Saves imported video details into Room and returns the domain Video.
+     */
     suspend fun saveVideo(
         details: ImportedVideoDetails,
         reelUrl: String = "",
         author: String = "",
-        caption: String = ""
+        caption: String = "",
+        thumbnailPath: String = ""
     ): Video = withContext(Dispatchers.IO) {
         val id = details.file.nameWithoutExtension
+        val finalThumbPath = if (thumbnailPath.isNotBlank() && File(thumbnailPath).exists()) {
+            thumbnailPath
+        } else {
+            generateThumbnail(details.file, id)
+        }
         val entity = VideoEntity(
             id = id,
             reelUrl = reelUrl,
             filePath = details.file.absolutePath,
+            thumbnailPath = finalThumbPath,
             title = details.originalName,
             author = author,
             caption = caption,
@@ -83,7 +115,7 @@ class VideoRepository(
             createdAt = details.file.lastModified()
         )
         videoDao.insertVideo(entity)
-        Log.d(TAG, "Successfully inserted video into Room: $id (${details.originalName})")
+        Log.d(TAG, "Successfully inserted video into Room: $id (${details.originalName}) with thumbnail: $finalThumbPath")
         entity.toDomain()
     }
 
@@ -94,6 +126,11 @@ class VideoRepository(
      */
     suspend fun deleteVideo(video: Video): Boolean = withContext(Dispatchers.IO) {
         videoDao.deleteVideoById(video.id)
+        if (video.thumbnailPath.isNotBlank()) {
+            try {
+                File(video.thumbnailPath).delete()
+            } catch (_: Exception) {}
+        }
         storageManager.deleteVideo(video.file)
     }
 
@@ -108,12 +145,17 @@ class VideoRepository(
         for (f in files) {
             storageManager.deleteVideo(f)
         }
+        val thumbDir = File(context.filesDir, "thumbnails")
+        if (thumbDir.exists()) {
+            thumbDir.listFiles()?.forEach { it.delete() }
+        }
     }
 
     suspend fun deleteAllVideosAsync() = deleteAllVideos()
 
     /**
-     * Ensures any physical reel files on disk are registered in the Room database.
+     * Ensures any physical reel files on disk are registered in the Room database,
+     * and retroactively generates high-resolution thumbnails for all videos.
      */
     private suspend fun syncDiskFilesWithDatabase() = withContext(Dispatchers.IO) {
         storageManager.migrateLegacyVideoIfNeeded()
@@ -122,7 +164,12 @@ class VideoRepository(
 
         for (file in diskFiles) {
             val existing = existingEntities.find { it.filePath == file.absolutePath || it.id == file.nameWithoutExtension }
-            if (existing == null || existing.durationMs == 0L) {
+            val id = file.nameWithoutExtension
+            val existingThumbPath = existing?.thumbnailPath ?: ""
+            val thumbExists = existingThumbPath.isNotBlank() && File(existingThumbPath).exists()
+            val thumbPath = if (thumbExists) existingThumbPath else generateThumbnail(file, id)
+
+            if (existing == null || existing.durationMs == 0L || !thumbExists) {
                 var durationMs = existing?.durationMs ?: 0L
                 var width = existing?.width ?: 0
                 var height = existing?.height ?: 0
@@ -145,10 +192,10 @@ class VideoRepository(
                 }
 
                 val entity = VideoEntity(
-                    id = file.nameWithoutExtension,
+                    id = id,
                     reelUrl = existing?.reelUrl ?: "",
                     filePath = file.absolutePath,
-                    thumbnailPath = existing?.thumbnailPath ?: "",
+                    thumbnailPath = thumbPath,
                     title = title,
                     author = existing?.author ?: "",
                     caption = existing?.caption ?: "",
@@ -160,7 +207,7 @@ class VideoRepository(
                     createdAt = existing?.createdAt ?: file.lastModified()
                 )
                 videoDao.insertVideo(entity)
-                Log.d(TAG, "Synced physical file into Room: ${file.name}")
+                Log.d(TAG, "Synced physical file into Room: ${file.name} (thumb: $thumbPath)")
             }
         }
     }

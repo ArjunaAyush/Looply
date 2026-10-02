@@ -23,7 +23,8 @@ data class FeedReel(
     val creatorHandle: String,
     val creatorName: String,
     val videoUrl: String,
-    val estimatedSizeBytes: Long = 0L
+    val estimatedSizeBytes: Long = 0L,
+    val thumbnailUrl: String = ""
 )
 
 @Singleton
@@ -112,6 +113,16 @@ class InstagramFeedClient @Inject constructor(
      * Fetches reels from the user's Instagram feed algorithm.
      * Queries multiple Instagram feed endpoints with robust fallback and logging.
      */
+    data class ClipsPageResult(
+        val reels: List<FeedReel>,
+        val maxId: String = "",
+        val pagingToken: String = ""
+    )
+
+    /**
+     * Fetches reels from the user's Instagram feed algorithm.
+     * Queries multiple Instagram feed endpoints with robust multi-page pagination and fallback.
+     */
     suspend fun fetchAlgorithmReels(
         minCount: Int = 10,
         cookies: String = getInstagramCookies()
@@ -125,12 +136,34 @@ class InstagramFeedClient @Inject constructor(
         val csrf = extractCsrfToken(cookies)
         Log.d(TAG, "Starting algorithm reels fetch (target minCount: $minCount, csrf: ${csrf.take(8)}...)")
 
-        // 1. Primary: Clips Home (Reels Feed)
-        val clipsReels = fetchFromClipsHome(cookies, csrf)
+        // 1. Primary: Clips Home (Reels Feed) with multi-page pagination
+        val clipsReels = fetchFromClipsHome(cookies, csrf, targetCount = minCount)
         resultReels.addAll(clipsReels)
         Log.d(TAG, "Fetched ${clipsReels.size} reels from clips/home")
 
-        // 2. Secondary: If more reels needed, query Timeline Feed
+        // 2. Secondary: If more reels needed, query Explore Clips
+        if (resultReels.size < minCount) {
+            val exploreReels = fetchFromClipsExplore(cookies, csrf, targetCount = minCount - resultReels.size)
+            for (r in exploreReels) {
+                if (resultReels.none { it.shortcode == r.shortcode }) {
+                    resultReels.add(r)
+                }
+            }
+            Log.d(TAG, "Total reels after explore fallback: ${resultReels.size}")
+        }
+
+        // 3. Tertiary: User Saved Posts / Clips
+        if (resultReels.size < minCount) {
+            val savedReels = fetchFromSaved(cookies, csrf)
+            for (r in savedReels) {
+                if (resultReels.none { it.shortcode == r.shortcode }) {
+                    resultReels.add(r)
+                }
+            }
+            Log.d(TAG, "Total reels after saved fallback: ${resultReels.size}")
+        }
+
+        // 4. Quaternary: Timeline Feed
         if (resultReels.size < minCount) {
             val timelineReels = fetchFromTimeline(cookies, csrf)
             for (r in timelineReels) {
@@ -141,34 +174,148 @@ class InstagramFeedClient @Inject constructor(
             Log.d(TAG, "Total reels after timeline fallback: ${resultReels.size}")
         }
 
-        // 3. Tertiary: Clips Discover/Explore fallback
-        if (resultReels.size < minCount) {
-            val discoverReels = fetchFromDiscover(cookies, csrf)
-            for (r in discoverReels) {
-                if (resultReels.none { it.shortcode == r.shortcode }) {
-                    resultReels.add(r)
-                }
-            }
-            Log.d(TAG, "Total reels after discover fallback: ${resultReels.size}")
-        }
-
         Log.d(TAG, "Final algorithm fetch result: ${resultReels.size} unique reels ready for download")
         resultReels
     }
 
-    private fun fetchFromClipsHome(cookies: String, csrf: String): List<FeedReel> {
+    private fun fetchFromClipsHome(
+        cookies: String,
+        csrf: String,
+        targetCount: Int = 15
+    ): List<FeedReel> {
+        val collectedReels = mutableListOf<FeedReel>()
         val endpoints = listOf(
             "https://www.instagram.com/api/v1/clips/home/",
             "https://i.instagram.com/api/v1/clips/home/"
         )
 
         for (endpoint in endpoints) {
+            var maxId = ""
+            var pagingToken = ""
+            var page = 0
+            val maxPages = 6
+
+            while (collectedReels.size < targetCount && page < maxPages) {
+                page++
+                var conn: HttpURLConnection? = null
+                try {
+                    val url = URL(endpoint)
+                    conn = (url.openConnection() as HttpURLConnection).apply {
+                        requestMethod = "POST"
+                        connectTimeout = 15000
+                        readTimeout = 15000
+                        setRequestProperty("User-Agent", USER_AGENT)
+                        setRequestProperty("Cookie", cookies)
+                        setRequestProperty("X-IG-App-ID", IG_APP_ID)
+                        setRequestProperty("X-ASBD-ID", "359341")
+                        setRequestProperty("X-IG-WWW-Claim", "0")
+                        if (csrf.isNotBlank()) setRequestProperty("X-CSRFToken", csrf)
+                        setRequestProperty("X-Requested-With", "XMLHttpRequest")
+                        setRequestProperty("Origin", "https://www.instagram.com")
+                        setRequestProperty("Referer", "https://www.instagram.com/reels/")
+                        setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                        doOutput = true
+                    }
+
+                    val postParams = mutableListOf("container_module=clips_viewer_clips_tab")
+                    if (maxId.isNotBlank()) postParams.add("max_id=$maxId")
+                    if (pagingToken.isNotBlank()) postParams.add("paging_token=$pagingToken")
+                    val postData = postParams.joinToString("&").toByteArray(Charsets.UTF_8)
+
+                    conn.setRequestProperty("Content-Length", postData.size.toString())
+                    conn.outputStream.use { it.write(postData) }
+
+                    val responseCode = conn.responseCode
+                    Log.d(TAG, "clips/home page $page ($endpoint) response code: $responseCode")
+
+                    if (responseCode in 200..299) {
+                        val response = readStream(conn)
+                        val pageResult = parseClipsHomeResponse(response)
+                        val newReels = pageResult.reels.filter { r -> collectedReels.none { it.shortcode == r.shortcode } }
+                        collectedReels.addAll(newReels)
+                        Log.d(TAG, "clips/home page $page fetched ${newReels.size} reels (total: ${collectedReels.size})")
+
+                        maxId = pageResult.maxId
+                        pagingToken = pageResult.pagingToken
+                        if (newReels.isEmpty() && maxId.isBlank() && pagingToken.isBlank()) {
+                            break
+                        }
+                    } else {
+                        break
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed clips/home page $page query on $endpoint: ${e.message}", e)
+                    break
+                } finally {
+                    conn?.disconnect()
+                }
+            }
+
+            if (collectedReels.isNotEmpty()) {
+                return collectedReels
+            }
+        }
+        return collectedReels
+    }
+
+    private fun fetchFromClipsExplore(
+        cookies: String,
+        csrf: String,
+        targetCount: Int = 10
+    ): List<FeedReel> {
+        val collectedReels = mutableListOf<FeedReel>()
+        val endpoint = "https://www.instagram.com/api/v1/clips/home/"
+        var conn: HttpURLConnection? = null
+        try {
+            val url = URL(endpoint)
+            conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 15000
+                readTimeout = 15000
+                setRequestProperty("User-Agent", USER_AGENT)
+                setRequestProperty("Cookie", cookies)
+                setRequestProperty("X-IG-App-ID", IG_APP_ID)
+                setRequestProperty("X-ASBD-ID", "359341")
+                setRequestProperty("X-IG-WWW-Claim", "0")
+                if (csrf.isNotBlank()) setRequestProperty("X-CSRFToken", csrf)
+                setRequestProperty("X-Requested-With", "XMLHttpRequest")
+                setRequestProperty("Origin", "https://www.instagram.com")
+                setRequestProperty("Referer", "https://www.instagram.com/explore/")
+                setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+                doOutput = true
+            }
+
+            val postData = "container_module=clips_viewer_explore".toByteArray(Charsets.UTF_8)
+            conn.setRequestProperty("Content-Length", postData.size.toString())
+            conn.outputStream.use { it.write(postData) }
+
+            val responseCode = conn.responseCode
+            if (responseCode in 200..299) {
+                val response = readStream(conn)
+                val pageResult = parseClipsHomeResponse(response)
+                collectedReels.addAll(pageResult.reels)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed explore clips query: ${e.message}", e)
+        } finally {
+            conn?.disconnect()
+        }
+        return collectedReels
+    }
+
+    private fun fetchFromSaved(cookies: String, csrf: String): List<FeedReel> {
+        val list = mutableListOf<FeedReel>()
+        val endpoints = listOf(
+            "https://www.instagram.com/api/v1/feed/saved/posts/",
+            "https://i.instagram.com/api/v1/feed/saved/posts/"
+        )
+
+        for (endpoint in endpoints) {
             var conn: HttpURLConnection? = null
             try {
-                Log.d(TAG, "Attempting POST to clips/home: $endpoint")
                 val url = URL(endpoint)
                 conn = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
+                    requestMethod = "GET"
                     connectTimeout = 15000
                     readTimeout = 15000
                     setRequestProperty("User-Agent", USER_AGENT)
@@ -178,35 +325,21 @@ class InstagramFeedClient @Inject constructor(
                     setRequestProperty("X-IG-WWW-Claim", "0")
                     if (csrf.isNotBlank()) setRequestProperty("X-CSRFToken", csrf)
                     setRequestProperty("X-Requested-With", "XMLHttpRequest")
-                    setRequestProperty("Origin", "https://www.instagram.com")
-                    setRequestProperty("Referer", "https://www.instagram.com/reels/")
-                    setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-                    doOutput = true
+                    setRequestProperty("Referer", "https://www.instagram.com/")
                 }
 
-                val postData = "container_module=clips_viewer_clips_tab".toByteArray(Charsets.UTF_8)
-                conn.setRequestProperty("Content-Length", postData.size.toString())
-                conn.outputStream.use { it.write(postData) }
-
-                val responseCode = conn.responseCode
-                Log.d(TAG, "clips/home ($endpoint) response code: $responseCode")
-
-                if (responseCode in 200..299) {
+                if (conn.responseCode in 200..299) {
                     val response = readStream(conn)
-                    val reels = parseClipsHomeResponse(response)
-                    Log.d(TAG, "clips/home parsed ${reels.size} reels from $endpoint")
+                    val reels = parseClipsHomeResponse(response).reels
                     if (reels.isNotEmpty()) return reels
-                } else {
-                    val err = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                    Log.w(TAG, "clips/home failed ($endpoint) HTTP $responseCode: ${err.take(200)}")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed clips/home query on $endpoint: ${e.message}", e)
+                Log.e(TAG, "Failed saved posts query on $endpoint: ${e.message}")
             } finally {
                 conn?.disconnect()
             }
         }
-        return emptyList()
+        return list
     }
 
     private fun fetchFromTimeline(cookies: String, csrf: String): List<FeedReel> {
@@ -218,7 +351,6 @@ class InstagramFeedClient @Inject constructor(
         for (endpoint in endpoints) {
             var conn: HttpURLConnection? = null
             try {
-                Log.d(TAG, "Attempting POST to timeline: $endpoint")
                 val url = URL(endpoint)
                 conn = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
@@ -242,16 +374,10 @@ class InstagramFeedClient @Inject constructor(
                 conn.outputStream.use { it.write(postData) }
 
                 val responseCode = conn.responseCode
-                Log.d(TAG, "timeline ($endpoint) response code: $responseCode")
-
                 if (responseCode in 200..299) {
                     val response = readStream(conn)
                     val reels = parseTimelineResponse(response)
-                    Log.d(TAG, "timeline parsed ${reels.size} reels from $endpoint")
                     if (reels.isNotEmpty()) return reels
-                } else {
-                    val err = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                    Log.w(TAG, "timeline failed ($endpoint) HTTP $responseCode: ${err.take(200)}")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed timeline query on $endpoint: ${e.message}", e)
@@ -262,61 +388,26 @@ class InstagramFeedClient @Inject constructor(
         return emptyList()
     }
 
-    private fun fetchFromDiscover(cookies: String, csrf: String): List<FeedReel> {
-        val endpoints = listOf(
-            "https://www.instagram.com/api/v1/clips/discover/",
-            "https://i.instagram.com/api/v1/clips/discover/"
-        )
-
-        for (endpoint in endpoints) {
-            var conn: HttpURLConnection? = null
-            try {
-                Log.d(TAG, "Attempting GET to discover: $endpoint")
-                val url = URL(endpoint)
-                conn = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    connectTimeout = 15000
-                    readTimeout = 15000
-                    setRequestProperty("User-Agent", USER_AGENT)
-                    setRequestProperty("Cookie", cookies)
-                    setRequestProperty("X-IG-App-ID", IG_APP_ID)
-                    setRequestProperty("X-ASBD-ID", "359341")
-                    setRequestProperty("X-IG-WWW-Claim", "0")
-                    if (csrf.isNotBlank()) setRequestProperty("X-CSRFToken", csrf)
-                    setRequestProperty("X-Requested-With", "XMLHttpRequest")
-                    setRequestProperty("Referer", "https://www.instagram.com/explore/")
-                }
-
-                val responseCode = conn.responseCode
-                Log.d(TAG, "discover ($endpoint) response code: $responseCode")
-
-                if (responseCode in 200..299) {
-                    val response = readStream(conn)
-                    val reels = parseClipsHomeResponse(response)
-                    Log.d(TAG, "discover parsed ${reels.size} reels from $endpoint")
-                    if (reels.isNotEmpty()) return reels
-                } else {
-                    val err = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                    Log.w(TAG, "discover failed ($endpoint) HTTP $responseCode: ${err.take(200)}")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed discover query on $endpoint: ${e.message}", e)
-            } finally {
-                conn?.disconnect()
-            }
-        }
-        return emptyList()
-    }
-
-    private fun parseClipsHomeResponse(jsonString: String): List<FeedReel> {
+    private fun parseClipsHomeResponse(jsonString: String): ClipsPageResult {
         val list = mutableListOf<FeedReel>()
+        var maxId = ""
+        var pagingToken = ""
         try {
             val root = JSONObject(jsonString)
-            val items = root.optJSONArray("items") ?: return emptyList()
+            maxId = root.optString("max_id").ifBlank { root.optString("next_max_id") }
+            pagingToken = root.optString("paging_token")
+
+            val items = root.optJSONArray("items")
+                ?: root.optJSONArray("data")
+                ?: root.optJSONArray("tray")
+                ?: return ClipsPageResult(list, maxId, pagingToken)
 
             for (i in 0 until items.length()) {
                 val itemObj = items.optJSONObject(i) ?: continue
-                val media = itemObj.optJSONObject("media") ?: itemObj
+                val media = itemObj.optJSONObject("media")
+                    ?: itemObj.optJSONObject("clip")
+                    ?: itemObj.optJSONObject("clips")
+                    ?: itemObj
                 val parsed = parseMediaObject(media)
                 if (parsed != null) {
                     list.add(parsed)
@@ -325,7 +416,7 @@ class InstagramFeedClient @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing clips response: ${e.message}")
         }
-        return list
+        return ClipsPageResult(list, maxId, pagingToken)
     }
 
     private fun parseTimelineResponse(jsonString: String): List<FeedReel> {
@@ -354,7 +445,9 @@ class InstagramFeedClient @Inject constructor(
             shortcode = media.optString("shortcode")
         }
         if (shortcode.isBlank()) {
-            val pk = media.optString("pk").ifBlank { media.optString("id") }
+            val pk = media.opt("pk")?.toString()?.ifBlank { null }
+                ?: media.opt("id")?.toString()
+                ?: ""
             if (pk.isNotBlank()) {
                 shortcode = pkToShortcode(pk)
             }
@@ -365,6 +458,7 @@ class InstagramFeedClient @Inject constructor(
 
         var videoUrl = ""
         val videoVersions = media.optJSONArray("video_versions")
+            ?: media.optJSONObject("clips_metadata")?.optJSONArray("video_versions")
         if (videoVersions != null && videoVersions.length() > 0) {
             val bestVideo = videoVersions.optJSONObject(0)
             videoUrl = bestVideo?.optString("url") ?: ""
@@ -372,7 +466,32 @@ class InstagramFeedClient @Inject constructor(
         if (videoUrl.isBlank()) {
             videoUrl = media.optString("video_url")
         }
+        if (videoUrl.isBlank()) {
+            val carousel = media.optJSONArray("carousel_media")
+            if (carousel != null && carousel.length() > 0) {
+                for (j in 0 until carousel.length()) {
+                    val carItem = carousel.optJSONObject(j) ?: continue
+                    val carVersions = carItem.optJSONArray("video_versions")
+                    if (carVersions != null && carVersions.length() > 0) {
+                        videoUrl = carVersions.optJSONObject(0)?.optString("url") ?: ""
+                        if (videoUrl.isNotBlank()) break
+                    }
+                }
+            }
+        }
         if (videoUrl.isBlank()) return null
+        videoUrl = videoUrl.replace("\\u0026", "&").replace("&amp;", "&")
+
+        var thumbnailUrl = ""
+        val imageVersions = media.optJSONObject("image_versions2")
+        val candidates = imageVersions?.optJSONArray("candidates")
+        if (candidates != null && candidates.length() > 0) {
+            thumbnailUrl = candidates.optJSONObject(0)?.optString("url") ?: ""
+        }
+        if (thumbnailUrl.isBlank()) {
+            thumbnailUrl = media.optString("display_url")
+        }
+        thumbnailUrl = thumbnailUrl.replace("\\u0026", "&").replace("&amp;", "&")
 
         val userObj = media.optJSONObject("user")
         val creatorHandle = userObj?.optString("username", "creator") ?: "creator"
@@ -387,7 +506,8 @@ class InstagramFeedClient @Inject constructor(
             title = title.take(120),
             creatorHandle = creatorHandle,
             creatorName = creatorName,
-            videoUrl = videoUrl
+            videoUrl = videoUrl,
+            thumbnailUrl = thumbnailUrl
         )
     }
 

@@ -490,7 +490,8 @@ class InstagramDownloader(
                 if (tempFile.exists() && tempFile.length() > 50_000) {
                     val videoTitle = if (!shortcode.isNullOrEmpty()) "Reel • $shortcode.mp4" else "Reel_${System.currentTimeMillis()}.mp4"
                     val importedDetails = videoImport.importVideo(Uri.fromFile(tempFile), videoTitle)
-                    return repository.saveVideo(importedDetails)
+                    val reelUrl = if (!shortcode.isNullOrEmpty()) "https://www.instagram.com/reel/$shortcode/" else ""
+                    return repository.saveVideo(importedDetails, reelUrl = reelUrl)
                 } else {
                     Log.w(TAG, "Downloaded file too small: ${tempFile.length()} bytes")
                 }

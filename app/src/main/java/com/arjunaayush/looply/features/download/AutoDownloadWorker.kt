@@ -91,20 +91,47 @@ class AutoDownloadWorker(
 
         try {
             val feedClient = InstagramFeedClient(context)
-            val candidateReels = feedClient.fetchAlgorithmReels(minCount = (targetMb / 15).coerceAtLeast(8))
+            val candidateQueue = ArrayDeque<FeedReel>()
+            val seenShortcodes = mutableSetOf<String>()
 
-            if (candidateReels.isEmpty()) {
+            var totalBytesDownloaded = 0L
+            var savedCount = 0
+
+            suspend fun refillQueue(): Int {
+                val needed = (((targetBytes - totalBytesDownloaded) / (8 * 1024 * 1024)).toInt()).coerceIn(6, 25)
+                val more = feedClient.fetchAlgorithmReels(minCount = needed)
+                var added = 0
+                for (r in more) {
+                    if (!seenShortcodes.contains(r.shortcode) && !repository.isVideoAlreadyDownloaded(r.shortcode)) {
+                        seenShortcodes.add(r.shortcode)
+                        candidateQueue.addLast(r)
+                        added++
+                    }
+                }
+                Log.d(TAG, "Auto-download: Refilled queue with $added reels (queue size: ${candidateQueue.size})")
+                return added
+            }
+
+            refillQueue()
+
+            if (candidateQueue.isEmpty()) {
                 Log.d(TAG, "Auto-download: No new candidate reels found in feed")
                 notificationManager.cancel(NOTIFICATION_ID)
                 return@withContext Result.success()
             }
 
-            var totalBytesDownloaded = 0L
-            var savedCount = 0
+            var consecutiveFailures = 0
 
-            for (reel in candidateReels) {
-                if (isStopped) break
+            while (totalBytesDownloaded < targetBytes && !isStopped && consecutiveFailures < 6) {
+                if (candidateQueue.isEmpty()) {
+                    val added = refillQueue()
+                    if (added == 0) {
+                        Log.d(TAG, "No more unique reels available from feed")
+                        break
+                    }
+                }
 
+                val reel = candidateQueue.removeFirst()
                 if (repository.isVideoAlreadyDownloaded(reel.shortcode)) {
                     continue
                 }
@@ -123,6 +150,7 @@ class AutoDownloadWorker(
                 if (downloadedFile != null && downloadedFile.exists() && downloadedFile.length() > 0) {
                     totalBytesDownloaded += downloadedFile.length()
                     savedCount++
+                    consecutiveFailures = 0
 
                     registerVideoInRepository(repository, downloadedFile, reel)
 
@@ -131,10 +159,8 @@ class AutoDownloadWorker(
                         putExtra(DownloadReelWorker.KEY_VIDEO_ID, downloadedFile.nameWithoutExtension)
                     }
                     context.sendBroadcast(broadcastIntent)
-                }
-
-                if (totalBytesDownloaded >= targetBytes) {
-                    break
+                } else {
+                    consecutiveFailures++
                 }
             }
 
@@ -248,10 +274,6 @@ class AutoDownloadWorker(
                         if (totalFileBytes % (64 * 1024) == 0L) {
                             onChunkProgress(totalFileBytes)
                         }
-
-                        if (alreadyDownloadedBytes + totalFileBytes >= targetTotalBytes) {
-                            break
-                        }
                     }
                 }
             }
@@ -296,11 +318,19 @@ class AutoDownloadWorker(
                 height = height,
                 sizeBytes = file.length()
             )
+
+            val thumbDir = File(context.filesDir, "thumbnails").apply { if (!exists()) mkdirs() }
+            val thumbFile = File(thumbDir, "${file.nameWithoutExtension}.jpg")
+            if (!thumbFile.exists() || thumbFile.length() == 0L) {
+                com.arjunaayush.looply.utils.ThumbnailLoader.extractAndSaveThumbnail(file, thumbFile)
+            }
+
             repository.saveVideo(
                 details = details,
                 reelUrl = "https://www.instagram.com/reel/${reel.shortcode}/",
                 author = reel.creatorHandle,
-                caption = reel.title
+                caption = reel.title,
+                thumbnailPath = if (thumbFile.exists()) thumbFile.absolutePath else ""
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error saving video in auto-download: ${e.message}")

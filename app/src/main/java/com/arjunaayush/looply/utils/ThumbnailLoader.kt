@@ -77,4 +77,32 @@ object ThumbnailLoader {
     fun clearCache() {
         memoryCache.evictAll()
     }
+
+    /**
+     * Extracts a frame from a local video file and compresses it into a high-quality JPEG thumbnail on disk.
+     */
+    fun extractAndSaveThumbnail(videoFile: File, outputFile: File): Boolean {
+        var retriever: MediaMetadataRetriever? = null
+        return try {
+            if (!videoFile.exists() || videoFile.length() == 0L) return false
+            retriever = MediaMetadataRetriever()
+            retriever.setDataSource(videoFile.absolutePath)
+            val frame = retriever.getFrameAtTime(500_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: retriever.frameAtTime
+                ?: return false
+
+            outputFile.parentFile?.mkdirs()
+            java.io.FileOutputStream(outputFile).use { out ->
+                frame.compress(Bitmap.CompressFormat.JPEG, 85, out)
+            }
+            frame.recycle()
+            outputFile.exists() && outputFile.length() > 0
+        } catch (_: Exception) {
+            false
+        } finally {
+            try {
+                retriever?.release()
+            } catch (_: Exception) {}
+        }
+    }
 }

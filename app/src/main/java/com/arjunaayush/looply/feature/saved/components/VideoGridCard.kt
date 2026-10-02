@@ -40,10 +40,10 @@ fun VideoGridCard(
             .aspectRatio(0.65f)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            val thumbModel = if (video.thumbnailPath.isNotBlank()) {
-                File(video.thumbnailPath)
-            } else {
-                File(video.filePath)
+            val thumbModel = when {
+                video.thumbnailPath.isNotBlank() && File(video.thumbnailPath).exists() -> File(video.thumbnailPath)
+                video.filePath.isNotBlank() && File(video.filePath).exists() -> File(video.filePath)
+                else -> null
             }
 
             AsyncImage(
