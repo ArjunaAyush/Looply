@@ -23,7 +23,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.arjunaayush.looply.core.designsystem.LinkerlyChip
 import com.arjunaayush.looply.core.designsystem.LinkerlyIcon
 import com.arjunaayush.looply.core.designsystem.LinkerlyIconButton
 import com.arjunaayush.looply.core.designsystem.LinkerlyIcons
@@ -62,18 +61,13 @@ fun PlayerControlsOverlay(
             .padding(16.dp)
     ) {
         // Top Badges
-        Row(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            LinkerlyChip(
-                text = if (isLooping) "Infinite Loop" else "Single Play",
-                isSelected = isLooping
-            )
-            if (isMuted) {
+        if (isMuted) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Box(
                     modifier = Modifier
                         .size(32.dp)

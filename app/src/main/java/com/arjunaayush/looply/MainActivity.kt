@@ -102,23 +102,27 @@ fun MainAppScaffold(
 
     Scaffold(
         topBar = {
-            LinkerlyTopBar(
-                title = {
-                    Text(
-                        text = screenTitle,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                actions = {
-                    LinkerlyIconButton(onClick = { showImportDialog = true }) {
-                        LinkerlyIcon(
-                            imageVector = LinkerlyIcons.Buttons.Paste,
-                            contentDescription = "Paste Reel Link",
-                            size = 20.dp
+            if (currentTab != MainTab.FEED) {
+                LinkerlyTopBar(
+                    title = {
+                        Text(
+                            text = screenTitle,
+                            fontWeight = FontWeight.Bold
                         )
+                    },
+                    actions = {
+                        if (currentTab == MainTab.SAVED) {
+                            LinkerlyIconButton(onClick = { showImportDialog = true }) {
+                                LinkerlyIcon(
+                                    imageVector = LinkerlyIcons.Buttons.Paste,
+                                    contentDescription = "Paste Reel Link",
+                                    size = 20.dp
+                                )
+                            }
+                        }
                     }
-                }
-            )
+                )
+            }
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
@@ -128,12 +132,19 @@ fun MainAppScaffold(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = innerPadding.calculateTopPadding())
+                    .then(
+                        if (currentTab != MainTab.FEED) {
+                            Modifier.padding(top = innerPadding.calculateTopPadding())
+                        } else {
+                            Modifier
+                        }
+                    )
             ) {
                 when (currentTab) {
                     MainTab.FEED -> ReelsScreen(
                         viewModel = reelsViewModel,
-                        onImportClick = { showImportDialog = true }
+                        onImportClick = { showImportDialog = true },
+                        isTabActive = currentTab == MainTab.FEED
                     )
                     MainTab.SAVED -> SavedVideosScreen(
                         viewModel = savedViewModel,

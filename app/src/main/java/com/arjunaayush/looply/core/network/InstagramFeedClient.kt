@@ -119,6 +119,9 @@ class InstagramFeedClient @Inject constructor(
         val pagingToken: String = ""
     )
 
+    private var persistentClipsMaxId: String = ""
+    private var persistentClipsPagingToken: String = ""
+
     /**
      * Fetches reels from the user's Instagram feed algorithm.
      * Queries multiple Instagram feed endpoints with robust multi-page pagination and fallback.
@@ -149,10 +152,21 @@ class InstagramFeedClient @Inject constructor(
                     resultReels.add(r)
                 }
             }
-            Log.d(TAG, "Total reels after explore algorithm fallback: ${resultReels.size}")
+            Log.d(TAG, "Total reels after explore clips: ${resultReels.size}")
         }
 
-        // 3. Tertiary: Timeline Feed (Reels in user follow stream)
+        // 3. Tertiary: Explore Popular feed
+        if (resultReels.size < minCount) {
+            val popularReels = fetchFromExplorePopular(cookies, csrf)
+            for (r in popularReels) {
+                if (resultReels.none { it.shortcode == r.shortcode }) {
+                    resultReels.add(r)
+                }
+            }
+            Log.d(TAG, "Total reels after explore popular: ${resultReels.size}")
+        }
+
+        // 4. Quaternary: Timeline Feed (Reels in user follow stream)
         if (resultReels.size < minCount) {
             val timelineReels = fetchFromTimeline(cookies, csrf)
             for (r in timelineReels) {
@@ -179,10 +193,10 @@ class InstagramFeedClient @Inject constructor(
         )
 
         for (endpoint in endpoints) {
-            var maxId = ""
-            var pagingToken = ""
+            var maxId = persistentClipsMaxId
+            var pagingToken = persistentClipsPagingToken
             var page = 0
-            val maxPages = 6
+            val maxPages = 8
 
             while (collectedReels.size < targetCount && page < maxPages) {
                 page++
@@ -222,7 +236,7 @@ class InstagramFeedClient @Inject constructor(
                         val pageResult = parseClipsHomeResponse(response)
                         val newReels = pageResult.reels.filter { r -> collectedReels.none { it.shortcode == r.shortcode } }
                         collectedReels.addAll(newReels)
-                        Log.d(TAG, "clips/home page $page fetched ${newReels.size} reels (total: ${collectedReels.size})")
+                        Log.d(TAG, "clips/home page $page fetched ${newReels.size} new reels (total: ${collectedReels.size})")
 
                         maxId = pageResult.maxId
                         pagingToken = pageResult.pagingToken
@@ -241,6 +255,8 @@ class InstagramFeedClient @Inject constructor(
             }
 
             if (collectedReels.isNotEmpty()) {
+                persistentClipsMaxId = maxId
+                persistentClipsPagingToken = pagingToken
                 return collectedReels
             }
         }
@@ -294,6 +310,96 @@ class InstagramFeedClient @Inject constructor(
 
 
 
+    private fun fetchFromExplorePopular(
+        cookies: String,
+        csrf: String
+    ): List<FeedReel> {
+        val collectedReels = mutableListOf<FeedReel>()
+        val endpoints = listOf(
+            "https://www.instagram.com/api/v1/explore/popular/?is_prefetch=false",
+            "https://i.instagram.com/api/v1/explore/popular/?is_prefetch=false"
+        )
+        for (endpoint in endpoints) {
+            var conn: HttpURLConnection? = null
+            try {
+                val url = URL(endpoint)
+                conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 15000
+                    readTimeout = 15000
+                    setRequestProperty("User-Agent", USER_AGENT)
+                    setRequestProperty("Cookie", cookies)
+                    setRequestProperty("X-IG-App-ID", IG_APP_ID)
+                    setRequestProperty("X-ASBD-ID", "359341")
+                    setRequestProperty("X-IG-WWW-Claim", "0")
+                    if (csrf.isNotBlank()) setRequestProperty("X-CSRFToken", csrf)
+                    setRequestProperty("X-Requested-With", "XMLHttpRequest")
+                    setRequestProperty("Origin", "https://www.instagram.com")
+                    setRequestProperty("Referer", "https://www.instagram.com/explore/")
+                }
+                if (conn.responseCode in 200..299) {
+                    val response = readStream(conn)
+                    val reels = parseExplorePopularResponse(response)
+                    collectedReels.addAll(reels)
+                    if (collectedReels.isNotEmpty()) return collectedReels
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed explore/popular on $endpoint: ${e.message}")
+            } finally {
+                conn?.disconnect()
+            }
+        }
+        return collectedReels
+    }
+
+    private fun parseExplorePopularResponse(jsonString: String): List<FeedReel> {
+        val list = mutableListOf<FeedReel>()
+        try {
+            val root = JSONObject(jsonString)
+            val items = root.optJSONArray("items")
+            if (items != null) {
+                for (i in 0 until items.length()) {
+                    val itemObj = items.optJSONObject(i) ?: continue
+                    val media = itemObj.optJSONObject("media")
+                        ?: itemObj.optJSONObject("media_or_ad")
+                        ?: itemObj
+                    val parsed = parseMediaObject(media)
+                    if (parsed != null) list.add(parsed)
+                }
+            }
+            val sections = root.optJSONArray("sectional_items")
+            if (sections != null) {
+                for (s in 0 until sections.length()) {
+                    val sec = sections.optJSONObject(s) ?: continue
+                    val layout = sec.optJSONObject("layout_content") ?: continue
+                    val medias = layout.optJSONArray("medias")
+                        ?: layout.optJSONArray("fill_items")
+                    if (medias != null) {
+                        for (m in 0 until medias.length()) {
+                            val medObj = medias.optJSONObject(m) ?: continue
+                            val media = medObj.optJSONObject("media")
+                                ?: medObj.optJSONObject("media_or_ad")
+                                ?: medObj
+                            val parsed = parseMediaObject(media)
+                            if (parsed != null) list.add(parsed)
+                        }
+                    }
+                    val twoByTwo = layout.optJSONObject("two_by_two_item")
+                    if (twoByTwo != null) {
+                        val media = twoByTwo.optJSONObject("media")
+                            ?: twoByTwo.optJSONObject("media_or_ad")
+                            ?: twoByTwo
+                        val parsed = parseMediaObject(media)
+                        if (parsed != null) list.add(parsed)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing explore popular response: ${e.message}")
+        }
+        return list
+    }
+
     private fun fetchFromTimeline(cookies: String, csrf: String): List<FeedReel> {
         val endpoints = listOf(
             "https://www.instagram.com/api/v1/feed/timeline/",
@@ -346,23 +452,51 @@ class InstagramFeedClient @Inject constructor(
         var pagingToken = ""
         try {
             val root = JSONObject(jsonString)
-            maxId = root.optString("max_id").ifBlank { root.optString("next_max_id") }
+            maxId = root.optString("max_id")
+                .ifBlank { root.optString("next_max_id") }
+                .ifBlank { root.optJSONObject("paging_info")?.optString("max_id") ?: "" }
+                .ifBlank { root.optJSONObject("paging_info")?.optString("next_max_id") ?: "" }
+                .ifBlank { root.optJSONObject("pagination")?.optString("next_max_id") ?: "" }
+                .ifBlank { root.optJSONObject("pagination")?.optString("max_id") ?: "" }
+
             pagingToken = root.optString("paging_token")
+                .ifBlank { root.optJSONObject("paging_info")?.optString("paging_token") ?: "" }
+                .ifBlank { root.optJSONObject("pagination")?.optString("paging_token") ?: "" }
 
             val items = root.optJSONArray("items")
                 ?: root.optJSONArray("data")
                 ?: root.optJSONArray("tray")
-                ?: return ClipsPageResult(list, maxId, pagingToken)
 
-            for (i in 0 until items.length()) {
-                val itemObj = items.optJSONObject(i) ?: continue
-                val media = itemObj.optJSONObject("media")
-                    ?: itemObj.optJSONObject("clip")
-                    ?: itemObj.optJSONObject("clips")
-                    ?: itemObj
-                val parsed = parseMediaObject(media)
-                if (parsed != null) {
-                    list.add(parsed)
+            if (items != null) {
+                for (i in 0 until items.length()) {
+                    val itemObj = items.optJSONObject(i) ?: continue
+                    val media = itemObj.optJSONObject("media")
+                        ?: itemObj.optJSONObject("media_or_ad")
+                        ?: itemObj.optJSONObject("clip")?.optJSONObject("media")
+                        ?: itemObj.optJSONObject("clip")
+                        ?: itemObj.optJSONObject("clips")
+                        ?: itemObj.optJSONObject("item")
+                        ?: itemObj
+                    val parsed = parseMediaObject(media)
+                    if (parsed != null) {
+                        list.add(parsed)
+                    }
+                }
+
+                if (maxId.isBlank() && items.length() > 0) {
+                    for (k in items.length() - 1 downTo 0) {
+                        val itm = items.optJSONObject(k) ?: continue
+                        val m = itm.optJSONObject("media")
+                            ?: itm.optJSONObject("media_or_ad")
+                            ?: itm.optJSONObject("clip")
+                            ?: itm
+                        val candidatePk = m.opt("pk")?.toString()?.ifBlank { null }
+                            ?: m.opt("id")?.toString()?.ifBlank { null }
+                        if (!candidatePk.isNullOrBlank()) {
+                            maxId = candidatePk
+                            break
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -379,7 +513,9 @@ class InstagramFeedClient @Inject constructor(
 
             for (i in 0 until feedItems.length()) {
                 val itemObj = feedItems.optJSONObject(i) ?: continue
-                val media = itemObj.optJSONObject("media_or_ad") ?: continue
+                val media = itemObj.optJSONObject("media_or_ad")
+                    ?: itemObj.optJSONObject("media")
+                    ?: continue
                 val parsed = parseMediaObject(media)
                 if (parsed != null) {
                     list.add(parsed)
@@ -411,12 +547,16 @@ class InstagramFeedClient @Inject constructor(
         var videoUrl = ""
         val videoVersions = media.optJSONArray("video_versions")
             ?: media.optJSONObject("clips_metadata")?.optJSONArray("video_versions")
+            ?: media.optJSONObject("video_metadata")?.optJSONArray("video_versions")
         if (videoVersions != null && videoVersions.length() > 0) {
             val bestVideo = videoVersions.optJSONObject(0)
             videoUrl = bestVideo?.optString("url") ?: ""
         }
         if (videoUrl.isBlank()) {
             videoUrl = media.optString("video_url")
+        }
+        if (videoUrl.isBlank()) {
+            videoUrl = media.optString("progressive_download_url")
         }
         if (videoUrl.isBlank()) {
             val carousel = media.optJSONArray("carousel_media")

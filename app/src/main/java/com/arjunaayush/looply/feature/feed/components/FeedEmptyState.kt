@@ -21,19 +21,39 @@ import com.arjunaayush.looply.core.designsystem.LinkerlyIcon
 import com.arjunaayush.looply.core.designsystem.LinkerlyIcons
 import com.arjunaayush.looply.core.designsystem.theme.LooplyTheme
 
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.text.font.FontWeight
+
 @Composable
 fun FeedEmptyState(
-    onImportClick: () -> Unit,
+    onImportClick: (() -> Unit)? = null,
+    showImportButton: Boolean = false,
+    showFeedHeader: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+        modifier = modifier.fillMaxSize()
     ) {
+        if (showFeedHeader) {
+            Text(
+                text = "Feed",
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                ),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+            )
+        }
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(32.dp)
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(32.dp)
         ) {
             LinkerlyIcon(
                 imageVector = LinkerlyIcons.Buttons.PlayVideo,
@@ -49,22 +69,25 @@ fun FeedEmptyState(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Share reels directly from Instagram or paste a video link to watch and loop offline.",
+                text = "Share reels directly from Instagram or auto-download from Settings to watch and loop offline.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(24.dp))
-            LinkerlyButton(
-                onClick = onImportClick
-            ) {
-                LinkerlyIcon(
-                    imageVector = LinkerlyIcons.Buttons.Paste,
-                    contentDescription = null,
-                    size = 18.dp
-                )
-                Spacer(modifier = Modifier.size(8.dp))
-                Text("Paste Reel Link")
+
+            if (showImportButton && onImportClick != null) {
+                Spacer(modifier = Modifier.height(24.dp))
+                LinkerlyButton(
+                    onClick = onImportClick
+                ) {
+                    LinkerlyIcon(
+                        imageVector = LinkerlyIcons.Buttons.Paste,
+                        contentDescription = null,
+                        size = 18.dp
+                    )
+                    Spacer(modifier = Modifier.size(8.dp))
+                    Text("Paste Reel Link")
+                }
             }
         }
     }

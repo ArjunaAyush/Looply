@@ -43,6 +43,10 @@ import com.arjunaayush.looply.domain.model.Video
 import kotlinx.coroutines.delay
 import java.io.File
 
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+
 @OptIn(UnstableApi::class)
 @Composable
 fun ReelPlayerItem(
@@ -52,11 +56,14 @@ fun ReelPlayerItem(
     isMuted: Boolean,
     onToggleFavorite: () -> Unit,
     onDelete: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isTabActive: Boolean = true
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val haptics = remember { HapticsManager(context) }
     var showHeartAnimation by remember { mutableStateOf(false) }
+    var isUserPaused by remember { mutableStateOf(false) }
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -69,8 +76,16 @@ fun ReelPlayerItem(
         }
     }
 
+    val shouldPlay = isCurrentPage && isTabActive
+
     LaunchedEffect(isCurrentPage) {
         if (isCurrentPage) {
+            isUserPaused = false
+        }
+    }
+
+    LaunchedEffect(shouldPlay, isUserPaused) {
+        if (shouldPlay && !isUserPaused) {
             exoPlayer.play()
         } else {
             exoPlayer.pause()
@@ -85,8 +100,26 @@ fun ReelPlayerItem(
         exoPlayer.volume = if (isMuted) 0f else 1f
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(lifecycleOwner, shouldPlay) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    if (shouldPlay && !isUserPaused) {
+                        exoPlayer.play()
+                    }
+                }
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                    exoPlayer.pause()
+                }
+                Lifecycle.Event.ON_DESTROY -> {
+                    exoPlayer.release()
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             exoPlayer.release()
         }
     }
@@ -104,8 +137,10 @@ fun ReelPlayerItem(
                     onTap = {
                         if (exoPlayer.isPlaying) {
                             exoPlayer.pause()
+                            isUserPaused = true
                         } else {
                             exoPlayer.play()
+                            isUserPaused = false
                         }
                     }
                 )
