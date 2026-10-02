@@ -1,6 +1,7 @@
 package com.arjunaayush.looply.features.download
 
 import android.content.Context
+import android.util.Log
 import com.arjunaayush.looply.BuildConfig
 import com.arjunaayush.looply.core.database.dao.PendingReelDao
 import com.arjunaayush.looply.core.database.entity.PendingReelEntity
@@ -10,16 +11,15 @@ import com.arjunaayush.looply.core.media.DashManifestParser
 import com.arjunaayush.looply.core.media.DashMuxer
 import com.arjunaayush.looply.core.media.ReelFileDownloader
 import com.arjunaayush.looply.core.media.UrlExpiredException
-import com.arjunaayush.looply.core.network.instagram.NormalizedPage
 import com.arjunaayush.looply.core.network.instagram.ReelCandidate
-import com.arjunaayush.looply.core.network.instagram.ReelJsonNormalizer
-import com.arjunaayush.looply.core.network.instagram.ResponseClassifier
-import com.arjunaayush.looply.core.network.instagram.ResponseVerdict
 import com.arjunaayush.looply.core.network.instagram.capture.CaptureException
 import com.arjunaayush.looply.core.network.instagram.capture.WebViewReelSource
 import com.arjunaayush.looply.core.network.instagram.config.IngestionConfigRepository
 import com.arjunaayush.looply.data.repository.VideoRepository
 import com.arjunaayush.looply.features.importvideo.ImportedVideoDetails
+import com.arjunaayush.looply.features.importvideo.VideoImport
+import com.arjunaayush.looply.features.instagram.InstagramDownloader
+import com.arjunaayush.looply.features.storage.VideoStorageManager
 import com.arjunaayush.looply.utils.ThumbnailLoader
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -37,8 +37,8 @@ sealed interface CaptureResult {
     data object NotLoggedIn : CaptureResult
     data object NeedsVerification : CaptureResult
     data object RateLimited : CaptureResult
-    data object NoTemplate : CaptureResult          // first page worked, pagination template not found
-    data object SchemaDrift : CaptureResult         // feed JSON arrived but zero reels parsed
+    data object NoTemplate : CaptureResult
+    data object SchemaDrift : CaptureResult
     data class Failed(val code: String) : CaptureResult
 }
 
@@ -60,57 +60,49 @@ class ReelIngestionEngine @Inject constructor(
 
         val source = sourceProvider.get()
         var queued = 0
-        var pages = 0
+        var attempts = 0
+        var consecutiveDuplicates = 0
+        val seenShortcodes = mutableSetOf<String>()
+
         try {
             source.open(config)
-            val initial = source.awaitInitial(config.initialWaitMs)
-            var cursor: String? = null
-            var hasMore = true
-            var sawFeedJson = false
-            var parsed = 0
-            for (p in initial) {
-                val page = ReelJsonNormalizer.parse(p.body)
-                sawFeedJson = sawFeedJson || page.rawLength > SCHEMA_DRIFT_MIN_BYTES
-                parsed += page.items.size
-                queued += enqueue(page.items)
-                if (page.nextCursor != null) { cursor = page.nextCursor; hasMore = page.hasMore }
-            }
-            onProgress(queued)
-            if (initial.isNotEmpty() && parsed == 0 && sawFeedJson) {
-                return CaptureResult.SchemaDrift
-            }
-            if (!source.hasTemplate) return if (queued > 0) CaptureResult.Queued(queued, 0) else CaptureResult.NoTemplate
 
-            var dryPages = 0
-            while (queued < target && hasMore && cursor != null &&
-                pages < config.maxPagesPerRun && guard.hasBudget(config)
+            while (queued < target && guard.hasBudget(config) &&
+                attempts < (target * 3).coerceIn(10, 50) &&
+                consecutiveDuplicates < 3
             ) {
-                delay(Random.nextLong(config.minDelayMs, config.maxDelayMs))
-                val resp = source.requestPage(cursor, config.pageTimeoutMs)
-                pages++
-                guard.recordPage()
+                attempts++
+                val candidate = source.awaitNextReel(config.pageTimeoutMs)
 
-                when (ResponseClassifier.classify(resp.status, resp.body)) {
-                    ResponseVerdict.RATE_LIMITED -> { guard.onRateLimited(); return CaptureResult.RateLimited }
-                    ResponseVerdict.CHALLENGE -> { guard.onChallenge(); return CaptureResult.NeedsVerification }
-                    ResponseVerdict.SESSION_EXPIRED -> { guard.onSessionExpired(); return CaptureResult.NotLoggedIn }
-                    ResponseVerdict.TRANSIENT -> break
-                    ResponseVerdict.OK -> Unit
+                if (candidate != null) {
+                    val code = candidate.shortcode ?: candidate.mediaId
+                    val isDuplicate = seenShortcodes.contains(code) ||
+                        (candidate.shortcode != null && videoRepository.isVideoAlreadyDownloaded(candidate.shortcode))
+
+                    if (isDuplicate) {
+                        consecutiveDuplicates++
+                        Log.d("ReelIngestionEngine", "Encountered duplicate reel $code, skipping...")
+                    } else {
+                        seenShortcodes.add(code)
+                        consecutiveDuplicates = 0
+                        val added = enqueue(listOf(candidate))
+                        if (added > 0) {
+                            queued += added
+                            onProgress(queued)
+                            guard.recordPage()
+                        }
+                    }
                 }
 
-                val page: NormalizedPage = ReelJsonNormalizer.parse(resp.body)
-                if (page.items.isEmpty() && page.rawLength > SCHEMA_DRIFT_MIN_BYTES) return CaptureResult.SchemaDrift
+                if (queued >= target) break
 
-                val added = enqueue(page.items + source.drainBacklogPayloads().flatMap { ReelJsonNormalizer.parse(it.body).items })
-                queued += added
-                onProgress(queued)
-                dryPages = if (added == 0) dryPages + 1 else 0
-                if (dryPages >= 2) break                       // feed is repeating itself; stop politely
-                cursor = page.nextCursor
-                hasMore = page.hasMore
+                // Jitter delay between 1.5s and 3.0s before loading next reel
+                delay(Random.nextLong(1500, 3000))
+                source.loadReelsFeed()
             }
+
             guard.onCleanRun()
-            return CaptureResult.Queued(queued, pages)
+            return CaptureResult.Queued(queued, attempts)
         } catch (e: CaptureException) {
             return when (e.code) {
                 "SESSION_EXPIRED" -> { guard.onSessionExpired(); CaptureResult.NotLoggedIn }
@@ -143,7 +135,7 @@ class ReelIngestionEngine @Inject constructor(
             val targetFile = File(storageDir, "${item.mediaId}.mp4")
 
             try {
-                // 2. Download video file (progressive or DASH)
+                // 2. Download video file (progressive, DASH, or resolver fallback)
                 if (!item.progressiveUrl.isNullOrBlank()) {
                     downloader.download(item.progressiveUrl, targetFile)
                 } else if (!item.dashManifest.isNullOrBlank()) {
@@ -160,6 +152,23 @@ class ReelIngestionEngine @Inject constructor(
                     } finally {
                         vFile.delete()
                         aFile?.delete()
+                    }
+                } else if (!item.shortcode.isNullOrBlank()) {
+                    // Safety net fallback: resolve stream via InstagramDownloader
+                    val igDownloader = InstagramDownloader(
+                        context = context,
+                        repository = videoRepository,
+                        videoImport = VideoImport(context, VideoStorageManager(context))
+                    )
+                    val saved = igDownloader.downloadReelSuspend("https://www.instagram.com/reels/${item.shortcode}/")
+                    if (saved != null) {
+                        pendingDao.mark(item.mediaId, PendingStatus.DONE)
+                        downloaded++
+                        onProgress(downloaded)
+                        continue
+                    } else {
+                        pendingDao.mark(item.mediaId, PendingStatus.FAILED, attemptDelta = 1, error = "Could not resolve stream")
+                        continue
                     }
                 } else {
                     pendingDao.mark(item.mediaId, PendingStatus.FAILED, attemptDelta = 1, error = "No stream url available")
@@ -230,9 +239,5 @@ class ReelIngestionEngine @Inject constructor(
         val inserted = pendingDao.insertAll(fresh).count { it != -1L }
         guard.recordReels(inserted)
         return inserted
-    }
-
-    private companion object {
-        const val SCHEMA_DRIFT_MIN_BYTES = 5_000
     }
 }

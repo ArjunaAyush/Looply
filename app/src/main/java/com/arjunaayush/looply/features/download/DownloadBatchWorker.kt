@@ -79,22 +79,24 @@ class DownloadBatchWorker @AssistedInject constructor(
 
         // 1. Capture stage
         val capture = engine.capture(targetCount) { queued ->
-            val progressNotif = buildProgressNotification(queued, targetCount, "Capturing reels from feed ($queued found)...")
+            val progressNotif = buildProgressNotification(queued, targetCount, "Capturing reels from feed ($queued/$targetCount)...")
             notificationManager.notify(NOTIFICATION_ID, progressNotif)
+            val fraction = (queued.toFloat() / targetCount * 0.5f).coerceIn(0f, 0.5f)
             setProgressAsync(workDataOf(
                 KEY_REELS_SAVED_COUNT to queued,
-                KEY_PROGRESS_PERCENT to (queued * 50 / targetCount).coerceAtMost(50),
-                KEY_STATUS_MESSAGE to "Capturing reels..."
+                KEY_PROGRESS_PERCENT to (fraction * 100).toInt(),
+                KEY_PROGRESS_FRACTION to fraction,
+                KEY_STATUS_MESSAGE to "Capturing reels ($queued/$targetCount)..."
             ))
         }
 
         val statusMsg = when (capture) {
-            is CaptureResult.Queued -> "Captured ${capture.newItems} reels from ${capture.pages} pages"
+            is CaptureResult.Queued -> "Captured ${capture.newItems} reels from feed"
             is CaptureResult.Blocked -> "Feed capture paused to protect account"
             is CaptureResult.NotLoggedIn -> "Instagram session expired"
             is CaptureResult.NeedsVerification -> "Instagram checkpoint required"
             is CaptureResult.RateLimited -> "Instagram rate limited, backing off"
-            is CaptureResult.NoTemplate -> "First page loaded, pagination template not found"
+            is CaptureResult.NoTemplate -> "Feed loaded, no more reels found"
             is CaptureResult.SchemaDrift -> "Feed layout changed"
             is CaptureResult.Failed -> "Capture failed: ${capture.code}"
         }
@@ -103,9 +105,11 @@ class DownloadBatchWorker @AssistedInject constructor(
         val downloaded = engine.downloadQueued(targetCount) { done ->
             val notif = buildProgressNotification(done, targetCount, "Downloading video files ($done/$targetCount)...")
             notificationManager.notify(NOTIFICATION_ID, notif)
+            val fraction = (0.5f + (done.toFloat() / targetCount * 0.5f)).coerceIn(0.5f, 1f)
             setProgressAsync(workDataOf(
                 KEY_REELS_SAVED_COUNT to done,
-                KEY_PROGRESS_PERCENT to (50 + done * 50 / targetCount).coerceAtMost(100),
+                KEY_PROGRESS_PERCENT to (fraction * 100).toInt(),
+                KEY_PROGRESS_FRACTION to fraction,
                 KEY_STATUS_MESSAGE to "Downloading reels ($done/$targetCount)..."
             ))
         }

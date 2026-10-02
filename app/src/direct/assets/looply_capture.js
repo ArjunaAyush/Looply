@@ -30,6 +30,81 @@
     try { return String(body); } catch (_) { return null; }
   };
 
+  const getShortcodeFromUrl = (urlStr) => {
+    try {
+      const u = new URL(urlStr, location.href);
+      const m = u.pathname.match(/\/(?:reels?|reel|p)\/([A-Za-z0-9_-]+)/);
+      return m ? m[1] : null;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  const extractVideoFromDom = () => {
+    const video = document.querySelector('video');
+    if (!video) return null;
+    const src = video.currentSrc || video.src || (video.querySelector('source') && video.querySelector('source').src);
+    const poster = video.poster || null;
+    let author = null;
+    const authorEl = document.querySelector('header a') ||
+      document.querySelector('a[role="link"][href^="/"] span') ||
+      document.querySelector('a[href^="/"][tabindex="0"]');
+    if (authorEl && authorEl.textContent) author = authorEl.textContent.trim().replace(/^@/, '');
+    return {
+      src: src || null,
+      poster: poster,
+      author: author
+    };
+  };
+
+  let lastReportedShortcode = null;
+  let lastReportedWithVideo = false;
+
+  const checkCurrentReel = () => {
+    const code = getShortcodeFromUrl(location.href);
+    if (!code) return;
+    const dom = extractVideoFromDom();
+    const hasVideo = !!(dom && dom.src);
+    if (code !== lastReportedShortcode || (hasVideo && !lastReportedWithVideo)) {
+      lastReportedShortcode = code;
+      lastReportedWithVideo = hasVideo;
+      send('redirect', {
+        shortcode: code,
+        url: location.href,
+        videoUrl: dom ? dom.src : null,
+        thumbnailUrl: dom ? dom.poster : null,
+        author: dom ? dom.author : null
+      });
+    }
+  };
+
+  // ---- URL change hooks (history push/replace) ----
+  const origPushState = history.pushState.bind(history);
+  history.pushState = function () {
+    origPushState.apply(this, arguments);
+    setTimeout(checkCurrentReel, 100);
+    setTimeout(checkCurrentReel, 500);
+  };
+  const origReplaceState = history.replaceState.bind(history);
+  history.replaceState = function () {
+    origReplaceState.apply(this, arguments);
+    setTimeout(checkCurrentReel, 100);
+    setTimeout(checkCurrentReel, 500);
+  };
+  window.addEventListener('popstate', () => {
+    setTimeout(checkCurrentReel, 100);
+    setTimeout(checkCurrentReel, 500);
+  });
+
+  // ---- DOM Mutation Observer for video element ----
+  const observeDom = () => {
+    if (!document.body) return;
+    const observer = new MutationObserver(() => {
+      checkCurrentReel();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  };
+
   let template = null;
   const rememberTemplate = (url, method, headers, body) => {
     if (template || method !== 'POST' || typeof body !== 'string') return;
@@ -44,7 +119,9 @@
     const url = abs(typeof input === 'string' ? input : (input && input.url));
     const res = await origFetch(input, init);
     if (matches(url, PATTERNS)) {
-      res.clone().text().then(t => { if (t && t.length < MAX_BODY) send('payload', { url, body: t }); }).catch(() => {});
+      res.clone().text().then(t => {
+        if (t && t.length < MAX_BODY) send('payload', { url, body: t });
+      }).catch(() => {});
       const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
       const headers = init && init.headers ? Object.fromEntries(new Headers(init.headers)) : {};
       const body = stringifyBody(init && init.body);
@@ -80,7 +157,7 @@
     return XS.apply(this, arguments);
   };
 
-  // ---- server-rendered first page ----
+  // ---- server-rendered first page & init ----
   const scanSsr = () => {
     document.querySelectorAll('script[type="application/json"]').forEach(s => {
       const t = s.textContent;
@@ -99,11 +176,21 @@
       }
     });
   };
+
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
     scanSsr();
+    observeDom();
+    checkCurrentReel();
   } else {
-    document.addEventListener('DOMContentLoaded', scanSsr);
+    document.addEventListener('DOMContentLoaded', () => {
+      scanSsr();
+      observeDom();
+      checkCurrentReel();
+    });
   }
+
+  // Periodic safety check for URL / Video
+  setInterval(checkCurrentReel, 1000);
 
   // ---- cursor replacement ----
   function setDeep(obj, cursor) {
@@ -155,6 +242,11 @@
 
   // ---- API called from Kotlin ----
   window.__looply = {
+    loadFeed: () => {
+      lastReportedShortcode = null;
+      lastReportedWithVideo = false;
+      window.location.href = "https://www.instagram.com/reels/";
+    },
     next: async (cursor, reqId) => {
       if (!template) { send('failure', { reqId, code: 'NO_TEMPLATE' }); return; }
       try {

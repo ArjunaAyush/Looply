@@ -47,6 +47,18 @@ class BridgeEventTest {
     }
 
     @Test
+    fun parseRedirectEvent() {
+        val raw = """{"type":"redirect","shortcode":"Dd796AMhx_x","url":"https://www.instagram.com/reels/Dd796AMhx_x/","videoUrl":"https://cdn.instagram.com/v.mp4","author":"creator123"}"""
+        val event = BridgeEvent.parse(raw)
+        assertTrue(event is BridgeEvent.ReelRedirect)
+        val redirect = event as BridgeEvent.ReelRedirect
+        assertEquals("Dd796AMhx_x", redirect.shortcode)
+        assertEquals("https://www.instagram.com/reels/Dd796AMhx_x/", redirect.url)
+        assertEquals("https://cdn.instagram.com/v.mp4", redirect.videoUrl)
+        assertEquals("creator123", redirect.author)
+    }
+
+    @Test
     fun parseInvalidReturnsNull() {
         assertNull(BridgeEvent.parse("not json"))
         assertNull(BridgeEvent.parse("""{"type":"unknown"}"""))

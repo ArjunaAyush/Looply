@@ -11,8 +11,11 @@ import android.webkit.WebViewClient
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.arjunaayush.looply.BuildConfig
+import com.arjunaayush.looply.core.network.instagram.ReelCandidate
+import com.arjunaayush.looply.core.network.instagram.ReelJsonNormalizer
 import com.arjunaayush.looply.core.network.instagram.config.IngestionConfig
 import com.arjunaayush.looply.core.preferences.PreferencesManager
+import com.arjunaayush.looply.features.instagram.InstagramDownloader
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.util.UUID
@@ -105,8 +108,22 @@ class WebViewReelSource @Inject constructor(
             }
 
             webViewClient = object : WebViewClient() {
+                override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
+                    super.doUpdateVisitedHistory(view, url, isReload)
+                    failIfLoggedOut(url)
+                    val shortcode = REEL_URL_REGEX.find(url)?.groupValues?.get(1)
+                    if (!shortcode.isNullOrBlank()) {
+                        events.trySend(BridgeEvent.ReelRedirect(shortcode = shortcode, url = url))
+                    }
+                }
+
                 override fun onPageFinished(view: WebView, url: String) {
                     view.evaluateJavascript(script, null)
+                    failIfLoggedOut(url)
+                    val shortcode = REEL_URL_REGEX.find(url)?.groupValues?.get(1)
+                    if (!shortcode.isNullOrBlank()) {
+                        events.trySend(BridgeEvent.ReelRedirect(shortcode = shortcode, url = url))
+                    }
                     events.trySend(BridgeEvent.Navigated(url))
                 }
             }
@@ -114,6 +131,101 @@ class WebViewReelSource @Inject constructor(
             resumeTimers()
             loadUrl(config.startUrl)
         }
+    }
+
+    /** Triggers navigation to the Instagram reels feed to obtain the next recommended reel. */
+    suspend fun loadReelsFeed() = withContext(Dispatchers.Main) {
+        webView?.evaluateJavascript(
+            "window.__looply && window.__looply.loadFeed ? window.__looply.loadFeed() : (window.location.href = 'https://www.instagram.com/reels/')",
+            null
+        )
+    }
+
+    /** Waits for the next reel redirect and returns its candidate metadata. */
+    suspend fun awaitNextReel(timeoutMs: Long): ReelCandidate? {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var detectedShortcode: String? = null
+        var redirectCandidate: ReelCandidate? = null
+        val candidatesFromPayloads = mutableListOf<ReelCandidate>()
+
+        while (System.currentTimeMillis() < deadline) {
+            val remainingMs = (deadline - System.currentTimeMillis()).coerceAtLeast(100)
+            val waitMs = if (redirectCandidate != null) 3000L.coerceAtMost(remainingMs) else remainingMs
+            val event = withTimeoutOrNull(waitMs) {
+                events.receiveCatching().getOrNull()
+            }
+
+            if (event == null) {
+                if (redirectCandidate != null) {
+                    return candidatesFromPayloads.find { it.shortcode == detectedShortcode } ?: redirectCandidate
+                }
+                if (System.currentTimeMillis() >= deadline) break
+                continue
+            }
+
+            when (event) {
+                is BridgeEvent.Navigated -> failIfLoggedOut(event.url)
+                is BridgeEvent.Template -> hasTemplate = true
+                is BridgeEvent.Payload -> {
+                    val page = ReelJsonNormalizer.parse(event.body)
+                    candidatesFromPayloads.addAll(page.items)
+                    if (detectedShortcode != null) {
+                        val matching = page.items.find { it.shortcode == detectedShortcode }
+                        if (matching != null && !matching.progressiveUrl.isNullOrBlank()) {
+                            return matching
+                        }
+                    } else {
+                        val firstValid = page.items.find { !it.progressiveUrl.isNullOrBlank() }
+                        if (firstValid != null) {
+                            return firstValid
+                        }
+                    }
+                }
+                is BridgeEvent.ReelRedirect -> {
+                    detectedShortcode = event.shortcode
+                    failIfLoggedOut(event.url)
+
+                    val existing = candidatesFromPayloads.find { it.shortcode == event.shortcode }
+                    if (existing != null && !existing.progressiveUrl.isNullOrBlank()) {
+                        return existing
+                    }
+
+                    if (!event.videoUrl.isNullOrBlank()) {
+                        val mediaId = InstagramDownloader.shortcodeToMediaId(event.shortcode)
+                        return ReelCandidate(
+                            mediaId = mediaId,
+                            shortcode = event.shortcode,
+                            ownerUsername = event.author ?: "instagram_creator",
+                            caption = event.caption ?: "",
+                            durationSec = null,
+                            progressiveUrl = event.videoUrl,
+                            dashManifest = null,
+                            thumbnailUrl = event.thumbnailUrl,
+                            width = 1080,
+                            height = 1920,
+                            urlExpiresAtEpochSec = null
+                        )
+                    } else if (redirectCandidate == null) {
+                        val mediaId = InstagramDownloader.shortcodeToMediaId(event.shortcode)
+                        redirectCandidate = ReelCandidate(
+                            mediaId = mediaId,
+                            shortcode = event.shortcode,
+                            ownerUsername = event.author ?: "instagram_creator",
+                            caption = event.caption ?: "",
+                            durationSec = null,
+                            progressiveUrl = null,
+                            dashManifest = null,
+                            thumbnailUrl = event.thumbnailUrl,
+                            width = 1080,
+                            height = 1920,
+                            urlExpiresAtEpochSec = null
+                        )
+                    }
+                }
+                else -> Unit
+            }
+        }
+        return redirectCandidate ?: candidatesFromPayloads.firstOrNull()
     }
 
     /** Collects the page's own first payloads. Returns early once a template and at least one payload exist. */
@@ -204,5 +316,6 @@ class WebViewReelSource @Inject constructor(
         const val VIEWPORT_H = 1920
         const val MOBILE_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
+        val REEL_URL_REGEX = Regex("""/(?:reels?|reel|p)/([A-Za-z0-9_-]+)""")
     }
 }
