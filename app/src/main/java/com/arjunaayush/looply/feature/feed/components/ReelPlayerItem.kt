@@ -66,7 +66,7 @@ fun ReelPlayerItem(
     var showHeartAnimation by remember { mutableStateOf(false) }
     var isUserPaused by remember { mutableStateOf(false) }
 
-    val exoPlayer = remember {
+    val exoPlayer = remember(video.id) {
         ExoPlayer.Builder(context).build().apply {
             repeatMode = if (isLooping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
             volume = if (isMuted) 0f else 1f
@@ -87,6 +87,9 @@ fun ReelPlayerItem(
 
     LaunchedEffect(shouldPlay, isUserPaused) {
         if (shouldPlay && !isUserPaused) {
+            if (exoPlayer.playbackState == Player.STATE_ENDED) {
+                exoPlayer.seekTo(0)
+            }
             exoPlayer.play()
         } else {
             exoPlayer.pause()
@@ -101,7 +104,13 @@ fun ReelPlayerItem(
         exoPlayer.volume = if (isMuted) 0f else 1f
     }
 
-    DisposableEffect(lifecycleOwner, shouldPlay) {
+    DisposableEffect(exoPlayer) {
+        onDispose {
+            exoPlayer.release()
+        }
+    }
+
+    DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_RESUME -> {
@@ -112,16 +121,12 @@ fun ReelPlayerItem(
                 Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
                     exoPlayer.pause()
                 }
-                Lifecycle.Event.ON_DESTROY -> {
-                    exoPlayer.release()
-                }
                 else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            exoPlayer.release()
         }
     }
 

@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.statusBarsPadding
 import com.arjunaayush.looply.core.designsystem.LinkerlyIcon
 import com.arjunaayush.looply.core.designsystem.LinkerlyIconButton
 import com.arjunaayush.looply.core.designsystem.LinkerlyIcons
@@ -59,13 +60,33 @@ fun PlayerControlsOverlay(
                     )
                 )
             )
-            .padding(16.dp)
     ) {
+        // Top Right Volume / Mute Button
+        LinkerlyIconButton(
+            onClick = {
+                haptics.playHaptic(HapticEffectType.TICK)
+                onToggleMute()
+            },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 8.dp, end = 16.dp)
+                .size(44.dp)
+                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+        ) {
+            LinkerlyIcon(
+                imageVector = if (isMuted) LinkerlyIcons.Buttons.VolumeOff else LinkerlyIcons.Buttons.VolumeUp,
+                contentDescription = if (isMuted) "Unmute" else "Mute",
+                tint = if (isMuted) Color.White.copy(alpha = 0.7f) else LooplyPink,
+                size = 22.dp
+            )
+        }
+
         // Right Action Rail
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(bottom = 72.dp),
+                .padding(end = 16.dp, bottom = 72.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -80,23 +101,6 @@ fun PlayerControlsOverlay(
                     contentDescription = null,
                     tint = if (video.isFavorite) LooplyPink else Color.White,
                     size = 24.dp
-                )
-            }
-
-            LinkerlyIconButton(
-                onClick = {
-                    haptics.playHaptic(HapticEffectType.TICK)
-                    onToggleMute()
-                },
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-            ) {
-                LinkerlyIcon(
-                    imageVector = if (isMuted) LinkerlyIcons.Buttons.VolumeOff else LinkerlyIcons.Buttons.VolumeUp,
-                    contentDescription = if (isMuted) "Unmute" else "Mute",
-                    tint = if (isMuted) Color.White.copy(alpha = 0.7f) else LooplyPink,
-                    size = 22.dp
                 )
             }
 
@@ -149,7 +153,7 @@ fun PlayerControlsOverlay(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth(0.78f)
-                .padding(bottom = 72.dp)
+                .padding(start = 16.dp, bottom = 72.dp)
         ) {
             Text(
                 text = video.displayAuthor,

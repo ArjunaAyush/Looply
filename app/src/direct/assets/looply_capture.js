@@ -11,10 +11,24 @@
   const MAX_BODY = 4000000;
 
   const send = (type, payload) => {
-    try { LooplyBridge.postMessage(JSON.stringify(Object.assign({ type }, payload))); } catch (_) {}
+    try {
+      const msg = JSON.stringify(Object.assign({ type }, payload));
+      if (typeof LooplyBridge !== 'undefined' && LooplyBridge && typeof LooplyBridge.postMessage === 'function') {
+        LooplyBridge.postMessage(msg);
+      } else if (typeof LooplyNative !== 'undefined' && LooplyNative && typeof LooplyNative.postMessage === 'function') {
+        LooplyNative.postMessage(msg);
+      }
+    } catch (_) {}
   };
   const abs = (u) => { try { return new URL(u, location.href).href; } catch (_) { return String(u); } };
   const matches = (url, list) => list.some(p => p.test(url));
+
+  const stringifyBody = (body) => {
+    if (!body) return null;
+    if (typeof body === 'string') return body;
+    if (body instanceof URLSearchParams) return body.toString();
+    try { return String(body); } catch (_) { return null; }
+  };
 
   let template = null;
   const rememberTemplate = (url, method, headers, body) => {
@@ -33,7 +47,8 @@
       res.clone().text().then(t => { if (t && t.length < MAX_BODY) send('payload', { url, body: t }); }).catch(() => {});
       const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
       const headers = init && init.headers ? Object.fromEntries(new Headers(init.headers)) : {};
-      rememberTemplate(url, method, headers, init && init.body);
+      const body = stringifyBody(init && init.body);
+      rememberTemplate(url, method, headers, body);
     }
     return res;
   };
@@ -52,6 +67,7 @@
   };
   XMLHttpRequest.prototype.send = function (body) {
     const l = this.__l;
+    const strBody = stringifyBody(body);
     if (l && matches(l.u, PATTERNS)) {
       this.addEventListener('load', () => {
         if (this.responseType === '' || this.responseType === 'text') {
@@ -59,18 +75,35 @@
           if (t && t.length < MAX_BODY) send('payload', { url: l.u, body: t });
         }
       });
-      rememberTemplate(l.u, l.m, l.h, body);
+      rememberTemplate(l.u, l.m, l.h, strBody);
     }
     return XS.apply(this, arguments);
   };
 
   // ---- server-rendered first page ----
-  document.addEventListener('DOMContentLoaded', () => {
+  const scanSsr = () => {
     document.querySelectorAll('script[type="application/json"]').forEach(s => {
       const t = s.textContent;
-      if (t && t.length < MAX_BODY && t.indexOf('video_versions') !== -1) send('payload', { url: 'ssr', body: t });
+      if (t && t.length < MAX_BODY && t.indexOf('video_versions') !== -1) {
+        send('payload', { url: 'ssr', body: t });
+      }
     });
-  });
+    document.querySelectorAll('script:not([type="application/json"])').forEach(s => {
+      const t = s.textContent;
+      if (t && t.length < MAX_BODY && t.indexOf('video_versions') !== -1) {
+        const first = t.indexOf('{');
+        const last = t.lastIndexOf('}');
+        if (first !== -1 && last > first) {
+          send('payload', { url: 'ssr_embedded', body: t.substring(first, last + 1) });
+        }
+      }
+    });
+  };
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    scanSsr();
+  } else {
+    document.addEventListener('DOMContentLoaded', scanSsr);
+  }
 
   // ---- cursor replacement ----
   function setDeep(obj, cursor) {
@@ -79,12 +112,36 @@
     for (const v of Object.values(obj)) if (setDeep(v, cursor)) return true;
     return false;
   }
+
   function looksPaginated(body) {
+    if (typeof body !== 'string') return false;
+    if (body.startsWith('{')) {
+      try {
+        const obj = JSON.parse(body);
+        if (obj.variables) return true;
+        return CURSOR_KEYS.some(k => k in obj) || 'page_size' in obj || 'container_module' in obj;
+      } catch (_) {}
+    }
     const p = new URLSearchParams(body);
     if (p.has('variables')) return true;
     return CURSOR_KEYS.some(k => p.has(k)) || p.has('page_size') || p.has('container_module');
   }
+
   function withCursor(body, cursor) {
+    if (typeof body !== 'string') return body;
+    if (body.startsWith('{')) {
+      try {
+        const obj = JSON.parse(body);
+        if (obj.variables) {
+          let v = typeof obj.variables === 'string' ? JSON.parse(obj.variables) : obj.variables;
+          if (!setDeep(v, cursor)) v.after = cursor;
+          obj.variables = typeof obj.variables === 'string' ? JSON.stringify(v) : v;
+        } else {
+          if (!setDeep(obj, cursor)) obj.max_id = cursor;
+        }
+        return JSON.stringify(obj);
+      } catch (_) {}
+    }
     const p = new URLSearchParams(body);
     if (p.has('variables')) {
       const v = JSON.parse(p.get('variables'));

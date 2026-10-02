@@ -86,7 +86,12 @@ class SettingsViewModel @Inject constructor(
                         } else if (info.state == WorkInfo.State.SUCCEEDED) {
                             val savedCount = info.outputData.getInt(DownloadBatchWorker.KEY_REELS_SAVED_COUNT, 0)
                             val downloadedMb = info.outputData.getInt(DownloadBatchWorker.KEY_DOWNLOADED_MB, 0)
-                            batchDownloadProgress.value = if (savedCount > 0) "Finished: Saved $savedCount loops ($downloadedMb MB)" else "Finished"
+                            val statusMsg = info.outputData.getString(DownloadBatchWorker.KEY_STATUS_MESSAGE)
+                            batchDownloadProgress.value = if (savedCount > 0) {
+                                "Finished: Saved $savedCount loops ($downloadedMb MB)"
+                            } else {
+                                statusMsg ?: "Finished: No new reels found"
+                            }
                             batchDownloadProgressFraction.value = 1f
                             isDownloadingBatch.value = false
                             refreshBlockReason()
@@ -95,7 +100,8 @@ class SettingsViewModel @Inject constructor(
                             batchDownloadProgressFraction.value = 0f
                             isDownloadingBatch.value = false
                         } else if (info.state == WorkInfo.State.FAILED) {
-                            batchDownloadProgress.value = "Batch download finished or stopped"
+                            val statusMsg = info.outputData.getString(DownloadBatchWorker.KEY_STATUS_MESSAGE)
+                            batchDownloadProgress.value = statusMsg ?: "Batch download finished or stopped"
                             batchDownloadProgressFraction.value = 0f
                             isDownloadingBatch.value = false
                             refreshBlockReason()

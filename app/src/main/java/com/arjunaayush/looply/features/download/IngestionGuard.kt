@@ -52,7 +52,12 @@ class IngestionGuard @Inject constructor(
     fun onSessionExpired() = prefs.edit().putBoolean(KEY_NEEDS_LOGIN, true).apply()
 
     /** Call from the login flow after a successful Instagram login, and from a "I've verified my account" action. */
-    fun clearUserActionFlags() = prefs.edit().putBoolean(KEY_NEEDS_LOGIN, false).putBoolean(KEY_NEEDS_VERIFY, false).apply()
+    fun clearUserActionFlags() = prefs.edit()
+        .putBoolean(KEY_NEEDS_LOGIN, false)
+        .putBoolean(KEY_NEEDS_VERIFY, false)
+        .putLong(KEY_COOLDOWN, 0L)
+        .putInt(KEY_STRIKES, 0)
+        .apply()
 
     fun onCleanRun() = prefs.edit().putInt(KEY_STRIKES, 0).apply()
 

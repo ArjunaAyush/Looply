@@ -122,17 +122,20 @@ class DownloadBatchWorker @AssistedInject constructor(
 
         context.sendBroadcast(Intent(ACTION_BATCH_DOWNLOAD_COMPLETE).setPackage(context.packageName))
 
+        val downloadedMb = if (downloaded > 0) (downloaded * 7).coerceAtLeast(1) else 0
+
         val output = workDataOf(
             KEY_REELS_SAVED_COUNT to downloaded,
+            KEY_DOWNLOADED_MB to downloadedMb,
             KEY_STATUS_MESSAGE to statusMsg
         )
 
         when (capture) {
             is CaptureResult.Queued -> Result.success(output)
             is CaptureResult.RateLimited, is CaptureResult.Blocked,
-            is CaptureResult.NeedsVerification, is CaptureResult.NotLoggedIn -> Result.success(output)
+            is CaptureResult.NeedsVerification, is CaptureResult.NotLoggedIn -> Result.failure(output)
             is CaptureResult.Failed -> if (runAttemptCount < 2) Result.retry() else Result.failure(output)
-            else -> Result.success(output)
+            else -> if (downloaded > 0) Result.success(output) else Result.failure(output)
         }
     }
 
