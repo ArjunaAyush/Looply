@@ -178,4 +178,4 @@ app/build/outputs/apk/play/release/app-play-release-unsigned.apk
 - Looply application code is licensed under the [MIT License](LICENSE).
 - All **Linkerly Design System** components, icons, and styling are proprietary assets of **Bhaskar Patel** and **Amurot** and subject to [`LICENSE_LINKERLY.md`](LICENSE_LINKERLY.md).
 
-Developed with ❤️ by **Amurot**.
+Developed with ❤️ by **ArjunaAyush** and **Bhaskar Patel** under **Amurot**.
