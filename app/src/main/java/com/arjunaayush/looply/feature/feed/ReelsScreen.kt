@@ -77,9 +77,13 @@ fun ReelsScreen(
                 key = { page -> uiState.videos[page].id }
             ) { page ->
                 val video = uiState.videos[page]
+                val pageOffset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
+                val pageFraction = (1f - kotlin.math.abs(pageOffset)).coerceIn(0f, 1f)
+
                 ReelPlayerItem(
                     video = video,
                     isCurrentPage = page == pagerState.currentPage,
+                    pageVisibilityFraction = pageFraction,
                     isLooping = uiState.isLooping,
                     isMuted = uiState.isMuted,
                     onToggleFavorite = { viewModel.toggleFavorite(video.id) },

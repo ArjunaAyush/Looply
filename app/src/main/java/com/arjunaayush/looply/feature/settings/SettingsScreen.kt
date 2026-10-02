@@ -47,12 +47,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.arjunaayush.looply.BuildConfig
+import androidx.compose.ui.window.Dialog
 import com.arjunaayush.looply.core.designsystem.LinkerlyButton
 import com.arjunaayush.looply.core.designsystem.LinkerlyCategorizedCard
 import com.arjunaayush.looply.core.designsystem.LinkerlyIcon
 import com.arjunaayush.looply.core.designsystem.LinkerlyIcons
 import com.arjunaayush.looply.core.designsystem.LinkerlyOutlinedButton
 import com.arjunaayush.looply.core.designsystem.LinkerlySwitch
+import com.arjunaayush.looply.core.designsystem.LinkerlyTextButton
 import com.arjunaayush.looply.core.designsystem.theme.LooplyPink
 import com.arjunaayush.looply.core.preferences.PreferencesManager
 import com.arjunaayush.looply.feature.settings.components.InstagramLoginDialog
@@ -70,6 +72,7 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     var showLoginDialog by remember { mutableStateOf(false) }
+    var showDeleteAllDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -412,6 +415,26 @@ fun SettingsScreen(
                         )
                     }
 
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    LinkerlyOutlinedButton(
+                        onClick = { showDeleteAllDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        LinkerlyIcon(
+                            imageVector = LinkerlyIcons.Buttons.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            size = 18.dp
+                        )
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Text(
+                            text = "Delete All Downloaded Reels",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+
                     if (uiState.isAutoDownloading || uiState.autoDownloadProgress.isNotBlank()) {
                         Spacer(modifier = Modifier.height(16.dp))
                         if (uiState.isAutoDownloading) {
@@ -686,5 +709,58 @@ fun SettingsScreen(
             },
             onDismiss = { showLoginDialog = false }
         )
+    }
+
+    if (showDeleteAllDialog) {
+        Dialog(onDismissRequest = { showDeleteAllDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Delete All Downloaded Reels?",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "This will permanently delete all downloaded video files and free up your local device storage. This action cannot be undone.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        LinkerlyTextButton(onClick = { showDeleteAllDialog = false }) {
+                            Text("Cancel")
+                        }
+                        Spacer(modifier = Modifier.size(8.dp))
+                        LinkerlyButton(
+                            onClick = {
+                                showDeleteAllDialog = false
+                                viewModel.deleteAllVideos()
+                                Toast.makeText(context, "Deleted all downloaded reels", Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            LinkerlyIcon(
+                                imageVector = LinkerlyIcons.Buttons.Delete,
+                                contentDescription = null,
+                                size = 16.dp
+                            )
+                            Spacer(modifier = Modifier.size(6.dp))
+                            Text("Delete All")
+                        }
+                    }
+                }
+            }
+        }
     }
 }

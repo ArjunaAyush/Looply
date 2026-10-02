@@ -93,6 +93,27 @@ class VideoRepositoryImpl @Inject constructor(
         videoDao.deleteWatchedVideos()
     }
 
+    override suspend fun deleteAllVideos() = withContext(Dispatchers.IO) {
+        val videos = videoDao.getAllVideos().firstOrNull() ?: emptyList()
+        videos.forEach { entity ->
+            try {
+                val file = File(entity.filePath)
+                if (file.exists()) {
+                    file.delete()
+                }
+                if (entity.thumbnailPath.isNotBlank()) {
+                    val thumb = File(entity.thumbnailPath)
+                    if (thumb.exists()) {
+                        thumb.delete()
+                    }
+                }
+            } catch (_: Exception) {
+                // Continue with DB deletion
+            }
+        }
+        videoDao.deleteAllVideos()
+    }
+
     override suspend fun toggleFavorite(id: String) = withContext(Dispatchers.IO) {
         videoDao.toggleFavorite(id)
     }

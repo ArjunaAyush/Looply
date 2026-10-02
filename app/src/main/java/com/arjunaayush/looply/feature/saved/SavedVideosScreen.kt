@@ -44,7 +44,8 @@ fun SavedVideosScreen(
         if (uiState.totalSavedCount > 0) {
             StorageUsageHeader(
                 storageFormatted = uiState.storageUsageFormatted,
-                onClearWatched = { viewModel.clearWatchedVideos() }
+                onClearWatched = { viewModel.clearWatchedVideos() },
+                onDeleteAll = { viewModel.deleteAllVideos() }
             )
 
             // Smart Filters (All, Liked, Unwatched, Watched) + Sort trigger

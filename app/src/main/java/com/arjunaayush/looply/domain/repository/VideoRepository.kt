@@ -13,6 +13,7 @@ interface VideoRepository {
     suspend fun saveVideo(video: Video)
     suspend fun deleteVideo(id: String)
     suspend fun deleteWatchedVideos()
+    suspend fun deleteAllVideos()
     suspend fun toggleFavorite(id: String)
     suspend fun markWatched(id: String)
     suspend fun recordVideoView(id: String)

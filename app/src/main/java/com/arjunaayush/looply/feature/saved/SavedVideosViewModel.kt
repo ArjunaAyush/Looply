@@ -9,6 +9,7 @@ import com.arjunaayush.looply.domain.model.Video
 import com.arjunaayush.looply.domain.model.applyFilterAndSort
 import com.arjunaayush.looply.domain.repository.VideoRepository
 import com.arjunaayush.looply.domain.usecase.ClearWatchedVideosUseCase
+import com.arjunaayush.looply.domain.usecase.DeleteAllVideosUseCase
 import com.arjunaayush.looply.domain.usecase.DeleteVideoUseCase
 import com.arjunaayush.looply.domain.usecase.GetSavedVideosUseCase
 import com.arjunaayush.looply.domain.usecase.GetVideosByCreatorUseCase
@@ -49,6 +50,7 @@ class SavedVideosViewModel @Inject constructor(
     private val deleteVideoUseCase: DeleteVideoUseCase,
     private val toggleFavoriteUseCase: ToggleFavoriteUseCase,
     private val clearWatchedVideosUseCase: ClearWatchedVideosUseCase,
+    private val deleteAllVideosUseCase: DeleteAllVideosUseCase,
     private val repository: VideoRepository
 ) : ViewModel() {
 
@@ -118,6 +120,12 @@ class SavedVideosViewModel @Inject constructor(
     fun clearWatchedVideos() {
         viewModelScope.launch {
             clearWatchedVideosUseCase()
+        }
+    }
+
+    fun deleteAllVideos() {
+        viewModelScope.launch {
+            deleteAllVideosUseCase()
         }
     }
 }
